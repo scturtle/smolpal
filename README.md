@@ -1,5 +1,5 @@
-SDLPAL
-======
+SMOLPAL
+=======
 
 A simplified version of [SDLPAL](https://github.com/sdlpal/sdlpal) featuring a minimal footprint of 10k LOC.
 
