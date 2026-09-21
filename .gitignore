@@ -1,6 +1,4 @@
 *.o
 *.d
-/sdlpal.cfg
-/sdlpal
 /pal
-/unifont.bdf
+/pal98
