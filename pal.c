@@ -62,8 +62,6 @@ static uint32_t vb_round_banker_u32_d(double v) {
   return (uint32_t)(((int64_t)fl % 2 == 0) ? fl : ce);
 }
 
-int16_t retval;
-
 int32_t tmp_file_size;
 uint32_t menu_bg_size;
 
@@ -325,8 +323,7 @@ void load_battle_effect_sprites(void) { PAL_CopyMem(fire_mkf_data, data_object_e
 
 int16_t check_key_pressed(void) {
   DoEvents_check_exit();
-  retval = PAL_CheckKey(key_state_array);
-  return retval;
+  return PAL_CheckKey(key_state_array);
 }
 
 int16_t increment_script_ip(int16_t ip) {
@@ -343,8 +340,7 @@ int16_t read_key(void) {
     kitty_delay_ms(1);
     key_pressed = check_key_pressed();
   }
-  retval = key_pressed;
-  return retval;
+  return key_pressed;
 }
 
 void play_sound(int16_t soundNum, int16_t keepFlag) {
@@ -432,8 +428,7 @@ int16_t count_alive_enemies(void) {
     if (enemy_battle_data[i].hp > 0)
       j++;
   }
-  retval = j;
-  return retval;
+  return (int16_t)j;
 }
 
 int16_t random_enemy_id(void) {
@@ -441,8 +436,7 @@ int16_t random_enemy_id(void) {
   while (enemy_battle_data[rng].hp <= 0) {
     rng = (uint16_t)VB_Int(VB_rtcRandomNext() * VB_CSng(enemy_max_id));
   }
-  retval = rng;
-  return retval;
+  return (int16_t)rng;
 }
 
 void clear_enemy_poison(int16_t enemyIdx) {
@@ -481,17 +475,14 @@ void draw_npc_sprite(void) {
 int16_t count_item_total(int16_t itemID) {
   int16_t result;
   int32_t j;
-  find_inventory_item(itemID);
-  result = retval;
+  result = find_inventory_item(itemID);
   if (result >= 0) {
     j = inventory[result].amount;
   } else {
     j = 0;
   }
-  count_equipped_items(itemID);
-  j = j + retval;
-  retval = j;
-  return retval;
+  j = j + count_equipped_items(itemID);
+  return (int16_t)j;
 }
 
 void read_palette(int16_t subfileNum) {
@@ -511,9 +502,7 @@ void restore_screen(void) {
 
 void menu_inventory(void) {
   int32_t tmp2;
-  int16_t cursorTmp = 0;
-  menu_loop(&cursorTmp, 30, 60, 22, 2, 2);
-  tmp2 = retval;
+  tmp2 = menu_loop(&(int16_t){0}, 30, 60, 22, 2, 2);
   if (tmp2 == 0) {
     inventory_use_menu();
   } else if (tmp2 == 1) {
@@ -526,7 +515,6 @@ int load_map_data(int16_t x, int16_t y, int16_t layer) {
   PAL_ExGm1(x, y, (const uint8_t *)map_data_buf, (uint16_t *)&tmp2);
   if (tmp2)
     PAL_ExGm2(curr_scene_event_count, layer, x, y, (const uint8_t *)&npc_display_data[1], (uint16_t *)&tmp2);
-  retval = tmp2;
   return tmp2;
 }
 
@@ -543,8 +531,7 @@ int16_t check_party_alive(void) {
     if (playerRoles(party[i].role, 9) > 0)
       aliveCount++;
   }
-  retval = aliveCount;
-  return retval;
+  return aliveCount;
 }
 
 int16_t find_magic_index(int16_t partyIdx, int16_t magicID) {
@@ -553,8 +540,7 @@ int16_t find_magic_index(int16_t partyIdx, int16_t magicID) {
     if (playerRoles(party[partyIdx].role, i) == magicID)
       foundIdx = i;
   }
-  retval = foundIdx;
-  return retval;
+  return foundIdx;
 }
 
 int16_t find_inventory_item(int16_t itemID) {
@@ -564,8 +550,7 @@ int16_t find_inventory_item(int16_t itemID) {
     if (inventory[i].amount > 0 && inventory[i].item == itemID)
       foundIdx = i;
   }
-  retval = foundIdx;
-  return retval;
+  return foundIdx;
 }
 
 void load_fbp_two_scene(int16_t subfileNum) {
@@ -587,17 +572,16 @@ void update_shake(void) {
   }
 }
 
-void set_auto_battle_targets(void) {
+int16_t set_auto_battle_targets(void) {
   int32_t result, i;
-  random_enemy_id();
-  result = retval;
+  result = random_enemy_id();
   for (i = battle_curr_role_idx; i <= enemy_pos_count; i++) {
     battle_role_action[i].actionType = 6;
     battle_role_action[i].target = result;
   }
   auto_battle_flag = 1;
   battle_role_idx_2 = 0;
-  retval = result;
+  return (int16_t)result;
 }
 
 int16_t get_player_attribute_total(int16_t roleID, int16_t attrIdx) {
@@ -606,17 +590,16 @@ int16_t get_player_attribute_total(int16_t roleID, int16_t attrIdx) {
   for (i = 11; i <= 17; i++) {
     total += equipment_effect(roleID, i, attrIdx);
   }
-  retval = total;
-  return retval;
+  return total;
 }
 
-void menu_loop(int16_t *cursorPos, int16_t x, int16_t y, int16_t labelIdx, int16_t midBlocks, int16_t rowCount) {
+int16_t menu_loop(int16_t *cursorPos, int16_t x, int16_t y, int16_t labelIdx, int16_t midBlocks, int16_t rowCount) {
   int32_t i;
   for (i = 0; i < rowCount; i++) {
     battle_order_array[i] = labelIdx + i;
     battle_order_array[i + 100] = (uint16_t)-1;
   }
-  menu_select(cursorPos, x, y, midBlocks, rowCount);
+  return menu_select(cursorPos, x, y, midBlocks, rowCount);
 }
 
 void show_dialog_image_and_wait(void) {
@@ -701,8 +684,7 @@ int16_t calc_magic_damage(int16_t baseDamage, int16_t elementIdx) {
   int16_t i = baseDamage;
   if (elementIdx > 0 && elementIdx <= 5)
     i = vb_round_banker_i16((float)(int16_t)(baseDamage * (10 + save_temp_buf[elementIdx])) / 10.0f);
-  retval = i;
-  return retval;
+  return i;
 }
 
 void read_file_to_buf(int16_t subfileNum, int16_t destIdx) {
@@ -719,8 +701,7 @@ int16_t random_alive_party_member(void) {
   while (playerRoles(party[rng].role, 9) <= 0) {
     rng = (uint16_t)VB_Int(VB_rtcRandomNext() * VB_CSng(battle_extra_param));
   }
-  retval = rng;
-  return retval;
+  return (int16_t)rng;
 }
 
 void reset_battle_sprite_pos(int16_t roleIdx) {
@@ -795,8 +776,7 @@ int16_t count_equipped_items(int16_t itemID) {
         count++;
     }
   }
-  retval = count;
-  return retval;
+  return count;
 }
 
 int16_t calc_battle_damage(int16_t attack, int16_t defense) {
@@ -813,8 +793,7 @@ int16_t calc_battle_damage(int16_t attack, int16_t defense) {
     if (i < 0)
       i = 0;
   }
-  retval = (int16_t)i;
-  return retval;
+  return (int16_t)i;
 }
 
 void get_subfile_len(int32_t fileHandle, int16_t subfileNum) {
@@ -964,10 +943,8 @@ void show_face(int16_t x, int16_t y, int16_t faceID) {
 
 void process_menu(void) {
   int32_t tmp2;
-  int16_t cursorTmp = 0;
   draw_menu_with_text_and_hp(21, 0, 0, RPG_money, -1);
-  menu_loop(&cursorTmp, 3, 37, 3, 3, 4);
-  tmp2 = retval;
+  tmp2 = menu_loop(&(int16_t){0}, 3, 37, 3, 3, 4);
   switch (tmp2) {
   case 0:
     entry_stub_show_text();
@@ -1042,10 +1019,8 @@ void show_number_to_tree(int16_t x, int16_t y, int16_t number, int16_t colorType
   while (remaining > 0) {
     digit = remaining % 10;
     remaining = remaining / 10;
-    {
-      const uint8_t *bitmap = (const uint8_t *)(word_glyph_index + word_glyph_index[digit + colorBase]);
-      PAL_QueueSprite(bitmap, (int16_t)screenX, (int16_t)(y + 999), 999, PAL_SpriteHeight(bitmap));
-    }
+    const uint8_t *bitmap = (const uint8_t *)(word_glyph_index + word_glyph_index[digit + colorBase]);
+    PAL_QueueSprite(bitmap, (int16_t)screenX, (int16_t)(y + 999), 999, PAL_SpriteHeight(bitmap));
     screenX = screenX - 6;
   }
 }
@@ -1063,8 +1038,7 @@ void adjust_battle_sprite_pos(void) {
   int32_t i, j;
   for (i = 1; i <= 9; i++) {
     for (j = 0; j <= enemy_pos_count; j++) {
-      check_player_alive(j);
-      if (retval > 1) {
+      if (check_player_alive(j) > 1) {
         player_battle_sprite[j].x = (player_battle_sprite[j].x + battle_sprite_data[j]) / 2;
         player_battle_sprite[j].y = (player_battle_sprite[j].y + battle_sprite_data_ext[j]) / 2;
       }
@@ -1113,8 +1087,7 @@ void sell_item_menu(void) {
   int16_t cursorPos = 0;
   do {
     draw_menu_with_text_and_hp(21, 100, 150, RPG_money, 0);
-    select_item_with_filter(&cursorPos, 1, 32);
-    selected = retval;
+    selected = select_item_with_filter(&cursorPos, 1, 32);
     if (selected >= 0) {
       push_screen_buffer();
       answer = (uint16_t)yes_no_menu(0, 19);
@@ -1124,7 +1097,6 @@ void sell_item_menu(void) {
       }
       restore_screen();
     }
-    retval = selected;
   } while (selected >= 0);
   draw_battle_row_sprite();
 }
@@ -1210,7 +1182,6 @@ void draw_menu_frame(int16_t x, int16_t y, int16_t lastBlockIdx, int16_t highlig
     PAL_PutP((int16_t)cursorX, y, (const uint8_t *)(global_buf_2 + k), (void *)screen_buffer_ptr, 0, 0);
     cursorX += global_buf_2[k];
   }
-  retval = cursorX;
 }
 
 void add_damage_number(int16_t x, int16_t y, int16_t number, int16_t colorType) {
@@ -1247,8 +1218,7 @@ void apply_enemy_poison_damage(void) {
 }
 
 void check_trigger_events(void) {
-  produce_screen_map(party_abs_x, party_abs_y, RPG_team_direction);
-  int16_t objIdx = retval;
+  int16_t objIdx = produce_screen_map(party_abs_x, party_abs_y, RPG_team_direction);
   if (objIdx >= 0) {
     if (npc_display_data[objIdx].currentFrame < (npc_display_data[objIdx].spriteFrames * 4)) {
       int32_t i;
@@ -1273,11 +1243,10 @@ int16_t check_player_alive(int16_t roleIdx) {
   alive &= (playerRoles(party[roleIdx].role, 9) > 0);
   if (alive)
     alive = player_battle_sprite[roleIdx].direction == 1 ? 1 : 2;
-  retval = alive;
-  return retval;
+  return alive;
 }
 
-void menu_select_party(int16_t x, int16_t y, int16_t spriteNum) {
+int16_t menu_select_party(int16_t x, int16_t y, int16_t spriteNum) {
   int16_t i = 0;
   int16_t j = 0;
   if (RPG_team_number > 0) {
@@ -1288,10 +1257,9 @@ void menu_select_party(int16_t x, int16_t y, int16_t spriteNum) {
       battle_order_array[k] = playerRoles(party[k].role, 3);
       PAL_GetBin(&battle_order_array[100 + k], spriteNum, party[k].role);
     }
-    menu_select(&j, x, y, 3, RPG_team_number + 1);
-    i = retval;
+    i = menu_select(&j, x, y, 3, RPG_team_number + 1);
   }
-  retval = i;
+  return i;
 }
 
 void select_magic(void) {
@@ -1299,8 +1267,7 @@ void select_magic(void) {
   int32_t j = 0;
   int16_t itemIdx = 0;
 L_00407140:
-  select_item_with_filter(&magic_select_tmp, 0, 1);
-  int16_t menuResult = retval;
+  int16_t menuResult = select_item_with_filter(&magic_select_tmp, 0, 1);
   if (menuResult < 0)
     return;
   PAL_GetBin((uint16_t *)&magicCount, objects[menuResult].data[6], 4);
@@ -1418,8 +1385,7 @@ int16_t select_battle_target(void) {
     }
     battle_target_cursor = -1;
   }
-  retval = i;
-  return retval;
+  return i;
 }
 
 void add_inventory_item(int16_t itemID, int16_t amount) {
@@ -1503,22 +1469,20 @@ void draw_rng_frame(int16_t frameDelay, int16_t frameCount, int16_t yPos) {
   PAL_PopScreen(global_buf_1);
 }
 
-void query_midi_status(void) {
+int16_t query_midi_status(void) {
   char mciResult[64] = {0};
   pal_mciSendStringA("status midi mode", mciResult, sizeof(mciResult));
   if (strncmp(mciResult, "playing", 7) == 0)
-    retval = 1;
-  else
-    retval = 0;
+    return 1;
+  return 0;
 }
 
-void query_cd_status(void) {
+int16_t query_cd_status(void) {
   char mciResult[64] = {0};
   pal_mciSendStringA("status cdtrack mode", mciResult, sizeof(mciResult));
   if (strncmp(mciResult, "playing", 7) == 0)
-    retval = 1;
-  else
-    retval = 0;
+    return 1;
+  return 0;
 }
 
 void animate_battle_sprites(int16_t startIdx, int16_t endIdx) {
@@ -1853,8 +1817,7 @@ int16_t compact_inventory(void) {
     inventory[i] = inventory[battle_order_array[i]];
     inventory[battle_order_array[i]] = tmp;
   }
-  retval = foundIdx;
-  return retval;
+  return foundIdx;
 }
 
 void init_battle_state(void) {
@@ -1908,8 +1871,7 @@ int16_t yes_no_menu(int16_t optionFlags, int16_t labelIdx) {
 int16_t select_enemy_target(void) {
   int16_t i;
   int32_t j, k;
-  count_alive_enemies();
-  if (retval <= 1) {
+  if (count_alive_enemies() <= 1) {
     i = 0;
     for (j = 0; j <= team_number; j++) {
       if (enemy_battle_data[j].hp > 0)
@@ -1949,8 +1911,7 @@ int16_t select_enemy_target(void) {
     }
     multi_event_param_3 = -1;
   }
-  retval = i;
-  return retval;
+  return i;
 }
 
 void get_sprites_curr_scene(void) {
@@ -1982,19 +1943,15 @@ void get_sprites_curr_scene(void) {
 
 void menu_system(void) {
   int32_t tmp2, result, result2;
-  int16_t cursorTmp = 0;
-  menu_loop(&cursorTmp, 40, 60, 11, 4, 5);
-  tmp2 = retval;
+  tmp2 = menu_loop(&(int16_t){0}, 40, 60, 11, 4, 5);
   if (tmp2 == 0) {
-    check_save_file();
-    result = retval;
+    result = check_save_file();
     if (result >= 0)
       SaveRPG_internal(result + 1);
     return;
   }
   if (tmp2 == 1) {
-    check_save_file();
-    result = retval;
+    result = check_save_file();
     if (result >= 0)
       LoadRPG_internal(result + 1);
     return;
@@ -2026,7 +1983,7 @@ void menu_system(void) {
   }
 }
 
-void select_party_member(void) {
+int16_t select_party_member(void) {
   int16_t selection = -2, selectedIndex = 0;
   int16_t keyResult;
   push_screen_buffer();
@@ -2054,7 +2011,7 @@ void select_party_member(void) {
       selection = selectedIndex;
   }
   restore_screen();
-  retval = selectedIndex;
+  return selectedIndex;
 }
 
 void play_theurgy_anim(int16_t magicIdx, int16_t startFrame, int16_t minFrames) {
@@ -2187,20 +2144,17 @@ void use_item_menu(void) {
   int32_t tmp = 0;
 
   show_status_icons();
-  menu_select_party(36, 64, -1);
-  i = retval;
+  i = menu_select_party(36, 64, -1);
   if (i >= 0) {
   L_0040AF7C:
     j = party[i].role;
-    select_theurgy(j, &cursorIdx, 1);
-    itemID = retval;
+    itemID = select_theurgy(j, &cursorIdx, 1);
     if (itemID < 0)
       return;
     itemObjID = objects[itemID].data[0];
     PAL_GetBin((uint16_t *)&cursorPos, objects[itemID].data[6], 4);
     if (cursorPos == 0) {
-      select_party_member();
-      selection = retval;
+      selection = select_party_member();
       if (selection < 0)
         goto L_0040AF7C;
     } else {
@@ -2362,7 +2316,7 @@ void add_magic_to_player(int16_t roleID, int16_t magicID, int16_t magicType) {
   }
 }
 
-void menu_select(int16_t *cursorPos, int16_t x, int16_t y, int16_t midBlocks, int16_t rowCount) {
+int16_t menu_select(int16_t *cursorPos, int16_t x, int16_t y, int16_t midBlocks, int16_t rowCount) {
   int16_t maxIdx = (int16_t)rowCount - 1;
   int16_t selection = -2;
   int16_t i, j;
@@ -2394,7 +2348,7 @@ void menu_select(int16_t *cursorPos, int16_t x, int16_t y, int16_t midBlocks, in
     if (j == 4)
       (*cursorPos)++;
   }
-  retval = selection;
+  return selection;
 }
 
 void draw_player_status(int16_t x, int16_t y, int16_t roleID, int16_t highlight) {
@@ -2462,27 +2416,21 @@ void draw_role_battle_frame(void) {
       jitter = 0;
     }
     if (battle_select_max == 0) {
-      {
-        const uint8_t *bitmap = (const uint8_t *)(mgo_frame_offsets + frameIdx);
-        PAL_QueueSprite(bitmap, (int16_t)drawX,
-                        (int16_t)((player_battle_sprite[i].y - jitter) + player_battle_sprite[i].animOffset),
-                        player_battle_sprite[i].animOffset, PAL_SpriteHeight(bitmap));
-      }
+      const uint8_t *bitmap = (const uint8_t *)(mgo_frame_offsets + frameIdx);
+      PAL_QueueSprite(bitmap, (int16_t)drawX,
+                      (int16_t)((player_battle_sprite[i].y - jitter) + player_battle_sprite[i].animOffset),
+                      player_battle_sprite[i].animOffset, PAL_SpriteHeight(bitmap));
     }
     if (battle_role_idx_2) {
       if (i == battle_target_cursor) {
-        {
-          const uint8_t *bitmap = (const uint8_t *)(word_glyph_index + word_glyph_index[66 + (effect_sub_count & 1)]);
-          PAL_QueueSprite(bitmap, (int16_t)(player_battle_sprite[i].x - 8), (int16_t)player_battle_sprite[i].y, 61,
-                          PAL_SpriteHeight(bitmap));
-        }
+        const uint8_t *bitmap = (const uint8_t *)(word_glyph_index + word_glyph_index[66 + (effect_sub_count & 1)]);
+        PAL_QueueSprite(bitmap, (int16_t)(player_battle_sprite[i].x - 8), (int16_t)player_battle_sprite[i].y, 61,
+                        PAL_SpriteHeight(bitmap));
       }
       if (i == battle_curr_role_idx) {
-        {
-          const uint8_t *bitmap = (const uint8_t *)(word_glyph_index + word_glyph_index[68 + (effect_sub_count & 1)]);
-          PAL_QueueSprite(bitmap, (int16_t)(player_battle_sprite[i].x - 8), (int16_t)player_battle_sprite[i].y, 68,
-                          PAL_SpriteHeight(bitmap));
-        }
+        const uint8_t *bitmap = (const uint8_t *)(word_glyph_index + word_glyph_index[68 + (effect_sub_count & 1)]);
+        PAL_QueueSprite(bitmap, (int16_t)(player_battle_sprite[i].x - 8), (int16_t)player_battle_sprite[i].y, 68,
+                        PAL_SpriteHeight(bitmap));
       }
     }
   }
@@ -2709,14 +2657,13 @@ void update_enemy_battle_anim(void) {
   }
 }
 
-void select_direction_menu(uint16_t *direction) {
+int16_t select_direction_menu(uint16_t *direction) {
   int16_t result = -2, keyResult;
   int32_t i;
   while (result == -2) {
     // NOTE: 同 read_key：remake 增补让出防灼 CPU（golden 靠 DoEvents 交还）。
     kitty_delay_ms(1);
-    check_key_pressed();
-    keyResult = retval;
+    keyResult = check_key_pressed();
     if (keyResult == 3)
       *direction = 0;
     if (keyResult == 5 && battle_order_array[1] == 0)
@@ -2752,7 +2699,7 @@ void select_direction_menu(uint16_t *direction) {
     }
     draw_battle_scene(1, 0);
   }
-  retval = result;
+  return result;
 }
 
 void calc_player_attack_damage(int16_t targetRole, int16_t attackerRole, int16_t isCritical) {
@@ -2768,8 +2715,8 @@ void calc_player_attack_damage(int16_t targetRole, int16_t attackerRole, int16_t
   for (i = 0; i <= baseDamage; i++) {
     atkPower = get_player_attribute_total(attackerRole, 17);
     defPower = calc_level_bonus(isCritical, 4);
-    calc_battle_damage(atkPower, enemy_runtime_data[isCritical].defense + defPower);
-    k = (retval * 2) / enemy_runtime_data[isCritical].physicalResistance;
+    k = (calc_battle_damage(atkPower, enemy_runtime_data[isCritical].defense + defPower) * 2) /
+        enemy_runtime_data[isCritical].physicalResistance;
     role_physical_attack(targetRole, isCritical, &k, baseDamage);
     j += k;
   }
@@ -2788,7 +2735,7 @@ void calc_player_attack_damage(int16_t targetRole, int16_t attackerRole, int16_t
   playerExp.attack[attackerRole].count++;
 }
 
-void select_battle_action(int16_t menuType) {
+int16_t select_battle_action(int16_t menuType) {
   int16_t result, tmp, tmp2, tmp3, tmp4, tmp5;
   int16_t actionResult = 1;
   int16_t cursorStart;
@@ -2798,8 +2745,7 @@ L_0040DE2A:
     cursorStart = 1;
   else
     cursorStart = 4;
-  select_item_with_filter(&magic_select_tmp, -1, cursorStart);
-  result = retval;
+  result = select_item_with_filter(&magic_select_tmp, -1, cursorStart);
   draw_battle_status_bar();
   if (result >= 0) {
     tmp = 0;
@@ -2807,8 +2753,7 @@ L_0040DE2A:
     if (tmp5 == 0) {
       PAL_GetBin((uint16_t *)&tmp2, objects[result].data[6], 4);
       if (tmp2 == 0) {
-        select_battle_target();
-        tmp3 = retval;
+        tmp3 = select_battle_target();
         if (tmp3 < 0) {
           tmp = -2;
           goto L_0040E00C;
@@ -2824,8 +2769,7 @@ L_0040DE2A:
     if (tmp5 == 1) {
       PAL_GetBin((uint16_t *)&tmp2, objects[result].data[6], 4);
       if (tmp2 == 0) {
-        select_enemy_target();
-        tmp4 = retval;
+        tmp4 = select_enemy_target();
         if (tmp4 < 0) {
           tmp = -2;
           goto L_0040E00C;
@@ -2846,7 +2790,7 @@ L_0040DE2A:
   } else {
     actionResult = -2;
   }
-  retval = actionResult;
+  return actionResult;
 }
 
 void increase_player_attr(int16_t roleID, int16_t attrType, int16_t amount) {
@@ -2861,23 +2805,21 @@ void increase_player_attr(int16_t roleID, int16_t attrType, int16_t amount) {
   if (playerRoles(roleID, attrName) > 999)
     playerRoles(roleID, attrName) = 999;
   frame_menu(52, 60, 11, -1);
-  {
-    char message[100];
-    char name[sizeof(word_dat_data[0]) + 1];
-    char attr[sizeof(word_dat_data[0]) + 1];
-    char suffix[sizeof(word_dat_data[0]) + 1];
-    memcpy(name, word_dat_data[playerRoles(roleID, 3)], sizeof(word_dat_data[0]));
-    memcpy(attr, word_dat_data[48 + attrType], sizeof(word_dat_data[0]));
-    memcpy(suffix, word_dat_data[32], sizeof(word_dat_data[0]));
-    name[sizeof(word_dat_data[0])] = 0;
-    attr[sizeof(word_dat_data[0])] = 0;
-    suffix[sizeof(word_dat_data[0])] = 0;
-    trim_string(name);
-    trim_string(attr);
-    trim_string(suffix);
-    snprintf(message, sizeof(message), "%s%s%s", name, attr, suffix);
-    PAL_DrawString((const char *)message, 62, 70, 3, 0, (void *)screen_buffer_ptr);
-  }
+  char message[100];
+  char name[sizeof(word_dat_data[0]) + 1];
+  char attr[sizeof(word_dat_data[0]) + 1];
+  char suffix[sizeof(word_dat_data[0]) + 1];
+  memcpy(name, word_dat_data[playerRoles(roleID, 3)], sizeof(word_dat_data[0]));
+  memcpy(attr, word_dat_data[48 + attrType], sizeof(word_dat_data[0]));
+  memcpy(suffix, word_dat_data[32], sizeof(word_dat_data[0]));
+  name[sizeof(word_dat_data[0])] = 0;
+  attr[sizeof(word_dat_data[0])] = 0;
+  suffix[sizeof(word_dat_data[0])] = 0;
+  trim_string(name);
+  trim_string(attr);
+  trim_string(suffix);
+  snprintf(message, sizeof(message), "%s%s%s", name, attr, suffix);
+  PAL_DrawString((const char *)message, 62, 70, 3, 0, (void *)screen_buffer_ptr);
   display_number(218, 74, amount, 0);
   wait_frame(180);
 }
@@ -2928,7 +2870,7 @@ void flee_from_battle(int16_t roleIdx, int16_t *isFleeing) {
   battle_action_param = *isFleeing;
 }
 
-void check_save_file(void) {
+int16_t check_save_file(void) {
   int16_t i;
   int16_t highlight, selectedSlot, cursorSlot;
   int16_t fileResult, menuY;
@@ -2977,7 +2919,7 @@ void check_save_file(void) {
     if (fileResult == 2)
       selectedSlot = cursorSlot;
   }
-  retval = selectedSlot;
+  return selectedSlot;
 }
 
 void play_all_kinds_music(int16_t musicNum, int16_t loopFlag) {
@@ -3141,16 +3083,14 @@ void timer_midi_cd_callback(void) {
     if (exit_flag == 1)
       stop_app_and_music();
     if (cd_active == 1 && cd_track_valid != 0) {
-      query_cd_status();
-      if (retval == 0) {
+      if (query_cd_status() == 0) {
         char cmd[64];
         snprintf(cmd, sizeof(cmd), "play cdtrack from%u to%u", cd_track_num, cd_track_num + 1);
         pal_mciSendStringA(cmd, NULL, 0);
       }
     }
     if (midi_active == 1 && midi_playing == 1) {
-      query_midi_status();
-      if (retval == 0) {
+      if (query_midi_status() == 0) {
         pal_mciSendStringA("seek midi to start", NULL, 0);
         pal_mciSendStringA("play midi", NULL, 0);
       }
@@ -3213,7 +3153,7 @@ void draw_battle_scene(int16_t frameCount, int16_t speed) {
   PAL_ClearMenu((uint8_t *)enemy_battle_data_ext, 3);
 }
 
-void produce_screen_map(int16_t x, int16_t y, int16_t viewportIdx) {
+int16_t produce_screen_map(int16_t x, int16_t y, int16_t viewportIdx) {
   int16_t viewportX = x, viewportY = y;
   int16_t i, j, baseIdx, dataIdx, dataIdx2;
   int16_t npcIdx = -1;
@@ -3254,7 +3194,7 @@ void produce_screen_map(int16_t x, int16_t y, int16_t viewportIdx) {
     }
   }
 L_0040FBF8:
-  retval = npcIdx;
+  return npcIdx;
 }
 
 void render_dialog_control(int16_t x, int16_t y) {
@@ -3426,14 +3366,12 @@ void SaveRPG_internal(int16_t saveSlot) {
   PAL_WriteFile(handle, &trail[0].x, 30);
   PAL_WriteFile(handle, &playerExp, 384);
   PAL_WriteFile(handle, &playerRoles, 900);
-  {
-    uint8_t vbPoison[320];
-    int pr, ps;
-    for (pr = 0; pr < MAX_PLAYABLE_PLAYER_ROLES; pr++)
-      for (ps = 0; ps < MAX_POISONS; ps++)
-        memcpy(vbPoison + (pr + 5 * ps) * 4, &poison_status[pr][ps], 4);
-    PAL_WriteFile(handle, vbPoison, 320);
-  }
+  uint8_t vbPoison[320];
+  int pr, ps;
+  for (pr = 0; pr < MAX_PLAYABLE_PLAYER_ROLES; pr++)
+    for (ps = 0; ps < MAX_POISONS; ps++)
+      memcpy(vbPoison + (pr + 5 * ps) * 4, &poison_status[pr][ps], 4);
+  PAL_WriteFile(handle, vbPoison, 320);
   PAL_WriteFile(handle, &inventory[0].item, 1536);
   PAL_WriteFile(handle, &scenes[1].mapNum, 2400);
   PAL_WriteFile(handle, &objects[0].data[0], 8400);
@@ -3477,14 +3415,12 @@ void LoadRPG_internal(int16_t saveSlot) {
     PAL_ReadFile(handle, &trail[0].x, 30);
     PAL_ReadFile(handle, &playerExp, 384);
     PAL_ReadFile(handle, &playerRoles, 900);
-    {
-      uint8_t vbPoison[320];
-      int pr, ps;
-      PAL_ReadFile(handle, vbPoison, 320);
-      for (pr = 0; pr < MAX_PLAYABLE_PLAYER_ROLES; pr++)
-        for (ps = 0; ps < MAX_POISONS; ps++)
-          memcpy(&poison_status[pr][ps], vbPoison + (pr + 5 * ps) * 4, 4);
-    }
+    uint8_t vbPoison[320];
+    int pr, ps;
+    PAL_ReadFile(handle, vbPoison, 320);
+    for (pr = 0; pr < MAX_PLAYABLE_PLAYER_ROLES; pr++)
+      for (ps = 0; ps < MAX_POISONS; ps++)
+        memcpy(&poison_status[pr][ps], vbPoison + (pr + 5 * ps) * 4, 4);
     PAL_ReadFile(handle, &inventory[0].item, 1536);
     PAL_ReadFile(handle, &scenes[1].mapNum, 2400);
     PAL_ReadFile(handle, &objects[0].data[0], 8400);
@@ -3525,9 +3461,10 @@ void enemy_attack_enemy(int16_t attackerIdx, int16_t targetIdx) {
 
   result = calc_level_bonus(attackerIdx, 6);
   result2 = calc_level_bonus(targetIdx, 4);
-  calc_battle_damage(enemy_runtime_data[attackerIdx].attackStrength + result,
-                     enemy_runtime_data[targetIdx].defense + result2);
-  damage = (retval * 2) / enemy_runtime_data[targetIdx].physicalResistance;
+  damage = (calc_battle_damage(enemy_runtime_data[attackerIdx].attackStrength + result,
+                               enemy_runtime_data[targetIdx].defense + result2) *
+            2) /
+           enemy_runtime_data[targetIdx].physicalResistance;
   add_damage_number(enemy_battle_data[targetIdx].x, enemy_battle_data[targetIdx].y - 110, damage, 1);
   player_hit_flags[targetIdx] = (uint16_t)-1;
   draw_battle_scene(1, 0);
@@ -3827,10 +3764,8 @@ void buy_item_menu(int16_t storeID) {
       menuY += 18;
     }
     draw_menu_with_text_and_hp(21, 20, 141, RPG_money, 0);
-    count_equipped_items(battle_order_array[cursorPos]);
-    wordIdx = retval;
-    find_inventory_item(battle_order_array[cursorPos]);
-    invIdx = retval;
+    wordIdx = count_equipped_items(battle_order_array[cursorPos]);
+    invIdx = find_inventory_item(battle_order_array[cursorPos]);
     if (invIdx >= 0)
       wordIdx += inventory[invIdx].amount;
     draw_menu_with_text_and_hp(35, 20, 100, wordIdx, 0);
@@ -3907,8 +3842,7 @@ void player_attack_player(int16_t attackerIdx, int16_t targetIdx) {
   int16_t k;
   int32_t i;
 
-  get_player_attribute_total(targetRoleID, 19);
-  result = retval;
+  result = get_player_attribute_total(targetRoleID, 19);
   if (player_battle_sprite[targetIdx].direction == 3)
     result = result + result;
 
@@ -3952,10 +3886,8 @@ void player_attack_player(int16_t attackerIdx, int16_t targetIdx) {
   }
   effect_particle_count = 0;
 
-  get_player_attribute_total(party[attackerIdx].role, 17);
-  result3 = retval;
-  calc_battle_damage(result3, result);
-  result2 = retval;
+  result3 = get_player_attribute_total(party[attackerIdx].role, 17);
+  result2 = calc_battle_damage(result3, result);
   if (result2 > playerRoles(targetRoleID, 9))
     result2 = playerRoles(targetRoleID, 9);
   playerRoles(targetRoleID, 9) -= result2;
@@ -4195,12 +4127,10 @@ void player_attack_all(int16_t roleIdx, int16_t animate) {
 
   soundAttrIdx = 69;
   dmgScale = 1.0f;
-  {
-    int32_t rngHit = VB_Int(VB_rtcRandomNext() * 6.0);
-    if ((player_status[roleIdx][5] > 0) || (rngHit == 4)) {
-      dmgScale = 3.0f;
-      soundAttrIdx = 71;
-    }
+  int32_t rngHit = VB_Int(VB_rtcRandomNext() * 6.0);
+  if ((player_status[roleIdx][5] > 0) || (rngHit == 4)) {
+    dmgScale = 3.0f;
+    soundAttrIdx = 71;
   }
   soundAttrIdx = playerRoles(roleID, soundAttrIdx);
 
@@ -4244,11 +4174,10 @@ void player_attack_all(int16_t roleIdx, int16_t animate) {
     i = enemy_attack_order[j];
     if (enemy_battle_data[i].hp > 0) {
       battle_order_array[i] = (uint16_t)-1;
-      get_player_attribute_total(roleID, 17);
-      atkPower = retval;
+      atkPower = get_player_attribute_total(roleID, 17);
       tmp = calc_level_bonus(i, 4);
-      calc_battle_damage(atkPower, enemy_runtime_data[i].defense + tmp);
-      damage = (retval * 2) / enemy_runtime_data[i].physicalResistance;
+      damage = (calc_battle_damage(atkPower, enemy_runtime_data[i].defense + tmp) * 2) /
+               enemy_runtime_data[i].physicalResistance;
       damage = vb_round_banker_i16_d((double)damage * dmgScale);
       battle_order_array[i + 20] += damage;
       dmgScale = dmgScale / 2.0f;
@@ -4502,13 +4431,11 @@ void role_physical_attack(int16_t attackerIdx, int16_t targetIdx, int16_t *targe
   rng = VB_rtcRandomNext();
   *targetRole = vb_round_banker_i16_d((double)*targetRole * (1.0 + ((double)rng / 8.0)));
 
-  {
-    int32_t rngCrit = VB_Int(VB_rtcRandomNext() * 12.0);
-    if ((attackerRole == 0) && (rngCrit == 3)) {
-      *targetRole *= 2;
-      hitCount = 2;
-      soundNum = playerRoles(attackerRole, 71);
-    }
+  int32_t rngCrit = VB_Int(VB_rtcRandomNext() * 12.0);
+  if ((attackerRole == 0) && (rngCrit == 3)) {
+    *targetRole *= 2;
+    hitCount = 2;
+    soundNum = playerRoles(attackerRole, 71);
   }
 
   play_sound(soundNum, 1);
@@ -4569,8 +4496,7 @@ void inventory_use_menu(void) {
   int16_t maxHP;
 
 L_00415B1C:
-  select_item_with_filter(&magic_select_tmp, 0, 2);
-  itemObj = retval;
+  itemObj = select_item_with_filter(&magic_select_tmp, 0, 2);
   if (itemObj < 0)
     return;
 
@@ -4592,7 +4518,7 @@ L_00415C46:
   PAL_PutP(16, 15, (const uint8_t *)(global_buf_2 + global_buf_2[0]), (void *)screen_buffer_ptr, 0, 0);
   draw_text_at(4, 69, itemObj, 13);
   if (find_inventory_item(itemObj) >= 0) {
-    invIdx = retval;
+    invIdx = find_inventory_item(itemObj);
     display_number(72, 72, inventory[invIdx].amount, 2);
   }
 
@@ -4692,8 +4618,7 @@ void show_role_status(int16_t roleIdx) {
   }
   for (j = 17; j <= 21; j++) {
     draw_text_at(6, rowY - 4, j + 34, 78);
-    get_player_attribute_total(roleID, j);
-    display_number(70, rowY, retval, 0);
+    display_number(70, rowY, get_player_attribute_total(roleID, j), 0);
     rowY += 20;
   }
 
@@ -4739,7 +4664,7 @@ void show_role_status(int16_t roleIdx) {
   (void)read_key();
 }
 
-void select_theurgy(int16_t roleID, int16_t *cursorIdx, int16_t filterMask) {
+int16_t select_theurgy(int16_t roleID, int16_t *cursorIdx, int16_t filterMask) {
   int16_t maxMagic = -1;
   int16_t i, j;
   int32_t magicObjID;
@@ -4890,7 +4815,7 @@ void select_theurgy(int16_t roleID, int16_t *cursorIdx, int16_t filterMask) {
   screen_buffer_ptr = 0;
   if (inputResult >= 0)
     inputResult = playerRoles(roleID, inputResult + 32);
-  retval = inputResult;
+  return inputResult;
 }
 
 void process_Script(int16_t eventObjID, uint16_t *scriptEntry) {
@@ -5190,7 +5115,7 @@ void init_key_definitions(void) {
   max_subfile_size = 0;
 }
 
-void select_item_with_filter(int16_t *cursorIdx, int16_t bgMode, int16_t filterMask) {
+int16_t select_item_with_filter(int16_t *cursorIdx, int16_t bgMode, int16_t filterMask) {
   int16_t j = 0, itemCount = 0, menuX = 0;
   int32_t rowCount = 3, maxPage = 7;
   int16_t k = 4, tmp2 = 0, menuY, colCount, maxScroll;
@@ -5365,7 +5290,7 @@ void select_item_with_filter(int16_t *cursorIdx, int16_t bgMode, int16_t filterM
     inventory[rowPos].amount = 0;
     inventory[rowPos].item = 0;
   }
-  retval = highlightColor;
+  return highlightColor;
 }
 
 void enemy_physical_attack(int16_t enemyIdx, int16_t targetIdx, int16_t targetRole, int16_t useMagic) {
@@ -5378,14 +5303,12 @@ void enemy_physical_attack(int16_t enemyIdx, int16_t targetIdx, int16_t targetRo
   double rng, rng2, rng3;
 
   PAL_ClearMenu((uint8_t *)battle_order_array, 20);
-  get_player_attribute_total(attackerRole, 19);
-  atkPower = retval;
+  atkPower = get_player_attribute_total(attackerRole, 19);
   if (player_battle_sprite[targetIdx].direction == 3)
     atkPower = atkPower + atkPower;
   battle_order_array[targetIdx] = (uint16_t)-1;
   rngVal = vb_round_banker_i16_d(-(double)VB_rtcRandomNext() * 0.85);
-  check_player_alive(targetIdx);
-  if (retval <= 1) {
+  if (check_player_alive(targetIdx) <= 1) {
     if (rngVal == -1) {
       rngVal = 1;
       hitChance = -1;
@@ -5394,8 +5317,7 @@ void enemy_physical_attack(int16_t enemyIdx, int16_t targetIdx, int16_t targetRo
           hitChance = i;
       }
       if (hitChance >= 0) {
-        check_player_alive(hitChance);
-        if (retval > 1)
+        if (check_player_alive(hitChance) > 1)
           rngVal = -(hitChance + 10);
       }
     } else {
@@ -5456,8 +5378,7 @@ void enemy_physical_attack(int16_t enemyIdx, int16_t targetIdx, int16_t targetRo
   if (rngVal >= 0) {
     enemy_battle_data_ext[targetIdx] = (uint16_t)-1;
     rng = VB_rtcRandomNext();
-    calc_battle_damage(vb_round_banker_i16_d((double)targetRole + rng), atkPower);
-    damage = retval;
+    damage = calc_battle_damage(vb_round_banker_i16_d((double)targetRole + rng), atkPower);
     rng = VB_rtcRandomNext();
     rng2 = VB_rtcRandomNext();
     damage = vb_round_banker_i16_d((double)damage * (1.0 + ((double)rng / 8.0)) + (double)rng2);
@@ -5616,8 +5537,7 @@ void calc_display_theurgy(int16_t enemyIdx, int16_t targetRole, int16_t itemID, 
       if (battle_order_array[j]) {
         attrIdx = theurgy_data.elemental;
         baseDmg = calc_level_bonus(j, 4) + enemy_runtime_data[j].defense;
-        calc_battle_damage(damage, baseDmg);
-        damage = (retval / 2) + (int16_t)theurgyBaseDmg;
+        damage = (calc_battle_damage(damage, baseDmg) / 2) + (int16_t)theurgyBaseDmg;
         if (attrIdx > 0 && attrIdx < 7) {
           resistVal = enemy_runtime_data[j].elemResistance[0];
           if (attrIdx >= 2 && attrIdx <= 5)
@@ -5651,6 +5571,7 @@ void calc_display_theurgy(int16_t enemyIdx, int16_t targetRole, int16_t itemID, 
 void enemy_magical_attack(int16_t enemyIdx, int16_t targetRole, int16_t itemID, int16_t power) {
   int16_t itemObj, j, k;
   int16_t targetStart, targetEnd, minFrames;
+  int16_t targetIdx, theurgyIdx;
   int16_t spriteIdx;
   double rng;
   int16_t damageMult;
@@ -5749,8 +5670,7 @@ void enemy_magical_attack(int16_t enemyIdx, int16_t targetRole, int16_t itemID, 
           battle_order_array[10 + k] *= 2;
         battle_order_array[k] = (uint16_t)-1;
         damageMult = vb_round_banker_i16_d(-(double)VB_rtcRandomNext() * 0.75);
-        check_player_alive(k);
-        if (retval < 2)
+        if (check_player_alive(k) < 2)
           damageMult = 1;
         if (damageMult == -1) {
           player_battle_sprite[k].direction = 3;
@@ -5783,16 +5703,15 @@ void enemy_magical_attack(int16_t enemyIdx, int16_t targetRole, int16_t itemID, 
     rng = VB_rtcRandomNext();
     baseDamage = vb_round_banker_i16_d((double)power + rng * 4.0);
     if (battle_order_array[k]) {
-      get_player_attribute_total(targetRole, 19);
-      calc_battle_damage(baseDamage, retval);
-      baseDamage = (retval / 2) + theurgy_data.baseDamage;
+      targetIdx = get_player_attribute_total(targetRole, 19);
+      baseDamage = (calc_battle_damage(baseDamage, targetIdx) / 2) + theurgy_data.baseDamage;
       baseDamage /= battle_order_array[10 + k];
       if (theurgy_data.elemental > 0 && theurgy_data.elemental < 7) {
         int16_t element = theurgy_data.elemental;
         if (element == 6)
           element = 0;
-        get_player_attribute_total(targetRole, 22 + element);
-        baseDamage = vb_round_banker_i16_d((double)baseDamage * ((double)(100 - retval) / 100.0));
+        theurgyIdx = get_player_attribute_total(targetRole, 22 + element);
+        baseDamage = vb_round_banker_i16_d((double)baseDamage * ((double)(100 - theurgyIdx) / 100.0));
       }
       baseDamage = calc_magic_damage(baseDamage, theurgy_data.elemental);
       if (baseDamage > playerRoles(targetRole, 9))
@@ -5859,7 +5778,7 @@ int16_t process_Battle(int16_t battleScene, int16_t surpriseFlag) {
   int16_t directionParam, actionParam;
   int16_t dirResult, tmp2, tmp3;
   int16_t enemyTarget, prevRoleIdx, isTargeted;
-  int16_t theurgyType = 0, theurgyResult3, theurgyResult4, theurgyResult2;
+  int16_t theurgyType = 0, theurgyResult, theurgyResult3, theurgyResult4, theurgyResult2;
   int16_t theurgyResult5, theurgyResult6, theurgyResult7 = 0, theurgyResult8;
   int16_t menuResult = 0, menuResult2;
   int16_t actionType, actionTypeSel;
@@ -5972,13 +5891,11 @@ int16_t process_Battle(int16_t battleScene, int16_t surpriseFlag) {
       battleResult = fade_step_count;
       goto L_00420C0E;
     }
-    check_party_alive();
-    if (retval == 0) {
+    if (check_party_alive() == 0) {
       battleResult = 1;
       goto L_00420C0E;
     }
-    count_alive_enemies();
-    if (retval == 0) {
+    if (count_alive_enemies() == 0) {
       battleResult = 3;
       goto L_00420C0E;
     }
@@ -6006,8 +5923,7 @@ int16_t process_Battle(int16_t battleScene, int16_t surpriseFlag) {
       if (battle_curr_role_idx > enemy_pos_count)
         goto L_0041EAC0;
       if (player_status[battle_curr_role_idx][4]) {
-        random_enemy_id();
-        battle_role_action[battle_curr_role_idx].target = retval;
+        battle_role_action[battle_curr_role_idx].target = random_enemy_id();
         battle_role_action[battle_curr_role_idx].actionType = 0;
         goto L_0041DD16;
       }
@@ -6041,15 +5957,13 @@ int16_t process_Battle(int16_t battleScene, int16_t surpriseFlag) {
           battle_order_array[2] = (uint16_t)-1;
         if (player_status[battle_curr_role_idx][3])
           battle_order_array[1] = (uint16_t)-1;
-        select_direction_menu((uint16_t *)&directionParam);
-        dirResult = retval;
+        dirResult = select_direction_menu((uint16_t *)&directionParam);
 
         if (dirResult > -9) {
           if (dirResult == -1) {
             prevRoleIdx = battle_curr_role_idx;
             for (i = 0; i < battle_curr_role_idx; i++) {
-              check_player_alive(i);
-              if (retval > 0)
+              if (check_player_alive(i) > 0)
                 prevRoleIdx = i;
             }
             battle_curr_role_idx = prevRoleIdx;
@@ -6062,8 +5976,7 @@ int16_t process_Battle(int16_t battleScene, int16_t surpriseFlag) {
               check_battle_action(&directionParam, &actionParam);
               goto L_0041E404;
             }
-            select_enemy_target();
-            enemyTarget = retval;
+            enemyTarget = select_enemy_target();
             if (enemyTarget >= 0) {
               battle_role_action[battle_curr_role_idx].target = enemyTarget;
               battle_role_action[battle_curr_role_idx].actionType = 0;
@@ -6077,8 +5990,7 @@ int16_t process_Battle(int16_t battleScene, int16_t surpriseFlag) {
               theurgyType = 0;
             else
               theurgyType = 2;
-            select_theurgy(party[battle_curr_role_idx].role, &actionParam, theurgyType);
-            theurgyResult3 = retval;
+            theurgyResult3 = select_theurgy(party[battle_curr_role_idx].role, &actionParam, theurgyType);
             draw_battle_status_bar();
             if (theurgyResult3 >= 0) {
               PAL_GetBin((uint16_t *)&prevRoleIdx, objects[theurgyResult3].data[6], 3);
@@ -6090,8 +6002,7 @@ int16_t process_Battle(int16_t battleScene, int16_t surpriseFlag) {
                   battle_role_action[battle_curr_role_idx].target = battle_curr_role_idx;
                   goto L_0041E134;
                 }
-                select_enemy_target();
-                enemyTarget = retval;
+                enemyTarget = select_enemy_target();
                 if (enemyTarget >= 0) {
                   battle_role_action[battle_curr_role_idx].target = enemyTarget;
                   goto L_0041E134;
@@ -6104,8 +6015,7 @@ int16_t process_Battle(int16_t battleScene, int16_t surpriseFlag) {
                   battle_role_action[battle_curr_role_idx].target = battle_curr_role_idx;
                   goto L_0041E1AA;
                 }
-                select_battle_target();
-                theurgyResult4 = retval;
+                theurgyResult4 = select_battle_target();
                 if (theurgyResult4 >= 0) {
                   battle_role_action[battle_curr_role_idx].target = theurgyResult4;
                   goto L_0041E1AA;
@@ -6121,8 +6031,7 @@ int16_t process_Battle(int16_t battleScene, int16_t surpriseFlag) {
           if (tmp2 == 2) {
             PAL_GetBin((uint16_t *)&isTargeted, objects[player_battle_sprite[battle_curr_role_idx].equipID].data[6], 4);
             if (isTargeted == 0) {
-              select_enemy_target();
-              enemyTarget = retval;
+              enemyTarget = select_enemy_target();
             } else
               enemyTarget = 0;
             if (enemyTarget >= 0) {
@@ -6137,26 +6046,23 @@ int16_t process_Battle(int16_t battleScene, int16_t surpriseFlag) {
           }
           if (tmp2 == 3) {
             do {
-              menu_loop(&menuParam1, 4, 16, 56, 3, 5);
-              theurgyResult2 = retval;
+              theurgyResult2 = menu_loop(&menuParam1, 4, 16, 56, 3, 5);
               if (theurgyResult2 < 0) {
                 draw_battle_status_bar();
                 goto L_0041E404;
               }
               tmp3 = theurgyResult2;
               if (tmp3 == 0) {
-                set_auto_battle_targets();
-                theurgyResult7 = retval;
+                theurgyResult7 = set_auto_battle_targets();
                 goto L_0041E3D2;
               }
               if (tmp3 == 1) {
-                menu_loop(&menuParam2, 24, 50, 23, 2, 2);
-                if (retval < 0) {
+                theurgyResult = menu_loop(&menuParam2, 24, 50, 23, 2, 2);
+                if (theurgyResult < 0) {
                   theurgyResult2 = -2;
                   goto L_0041E3D2;
                 }
-                select_battle_action(retval);
-                theurgyResult2 = retval;
+                theurgyResult2 = select_battle_action(theurgyResult);
                 goto L_0041E3D2;
               }
               if (tmp3 == 2) {
@@ -6192,8 +6098,7 @@ int16_t process_Battle(int16_t battleScene, int16_t surpriseFlag) {
               itemObjID = battle_role_action[i].itemID;
               k = objects[itemObjID].data[0];
               copy_subfile_data(k);
-              find_magic_index(i, itemObjID);
-              menuResult2 = retval;
+              menuResult2 = find_magic_index(i, itemObjID);
               battle_role_action[i].invIndex = menuResult2 - 32;
               if (player_status[i][3] || menuResult2 == 0 || playerRoles(party[i].role, 10) < theurgy_data.costMP) {
                 if (battle_role_action[i].actionType == 1)
@@ -6203,8 +6108,7 @@ int16_t process_Battle(int16_t battleScene, int16_t surpriseFlag) {
               }
             }
             if (battle_role_action[i].actionType == 3 || battle_role_action[i].actionType == 4) {
-              find_inventory_item(battle_role_action[i].itemID);
-              menuResult2 = retval;
+              menuResult2 = find_inventory_item(battle_role_action[i].itemID);
               if (menuResult2 >= 0) {
                 battle_role_action[i].invIndex = menuResult2;
                 if (inventory[menuResult2].amount <= inventory[menuResult2].amountInUse) {
@@ -6228,18 +6132,15 @@ int16_t process_Battle(int16_t battleScene, int16_t surpriseFlag) {
         }
         theurgyResult2 = 0;
         if (dirResult == -10) {
-          set_auto_battle_targets();
-          theurgyResult7 = retval;
+          theurgyResult7 = set_auto_battle_targets();
         }
         if (dirResult == -11)
           battle_set_action_code();
         if (dirResult == -12) {
-          select_battle_action(0);
-          theurgyResult2 = retval;
+          theurgyResult2 = select_battle_action(0);
         }
         if (dirResult == -13) {
-          select_battle_action(1);
-          theurgyResult2 = retval;
+          theurgyResult2 = select_battle_action(1);
         }
         if (dirResult == -14)
           battle_set_action_walk();
@@ -6250,8 +6151,7 @@ int16_t process_Battle(int16_t battleScene, int16_t surpriseFlag) {
         if (dirResult == -16) {
           for (i = battle_curr_role_idx; i <= enemy_pos_count; i++) {
             k = party[i].role;
-            random_enemy_id();
-            battle_role_action[i].target = retval;
+            battle_role_action[i].target = random_enemy_id();
             hasMagic = 0;
             maxDmg = 0;
             for (j = 32; j <= 63; j++) {
@@ -6313,8 +6213,8 @@ int16_t process_Battle(int16_t battleScene, int16_t surpriseFlag) {
       battle_action_queue++;
       battle_action_queue_ext[battle_action_queue] = battle_enemy_idx;
       rng2 = VB_rtcRandomNext();
-      get_player_attribute_total(party[battle_enemy_idx].role, 20);
-      prevRoleIdx = vb_round_banker_i16_d((double)retval * (0.9 + ((double)rng2 / 5.0)));
+      prevRoleIdx = vb_round_banker_i16_d((double)get_player_attribute_total(party[battle_enemy_idx].role, 20) *
+                                          (0.9 + ((double)rng2 / 5.0)));
       if (actionType == 7)
         prevRoleIdx *= 10;
       if (actionType == 5)
@@ -6354,8 +6254,7 @@ int16_t process_Battle(int16_t battleScene, int16_t surpriseFlag) {
           if (l > 0)
             battle_sub_flag = (battle_action_queue_ext[l] == battle_action_queue_ext[l - 1]);
           if (enemy_battle_data[battle_enemy_idx].hp > 0) {
-            random_alive_party_member();
-            theurgyResult8 = retval;
+            theurgyResult8 = random_alive_party_member();
             enemy_attack_role(battle_enemy_idx, theurgyResult8, battle_sprite_ext[l]);
           }
         }
@@ -6396,8 +6295,7 @@ int16_t process_Battle(int16_t battleScene, int16_t surpriseFlag) {
       magic_select_idx = 0;
       in_battle_action = 0;
       battle_enemy_hp = 0;
-      count_alive_enemies();
-      theurgyResult5 = retval;
+      theurgyResult5 = count_alive_enemies();
       for (i = 0; i <= 4; i++)
         battle_enemy_data_ext[i] = enemy_battle_data[i].hp;
 
@@ -6410,8 +6308,7 @@ int16_t process_Battle(int16_t battleScene, int16_t surpriseFlag) {
         itemObjID = battle_role_action[battle_enemy_idx].itemID;
         k = objects[itemObjID].data[0];
         copy_subfile_data(k);
-        get_player_attribute_total(roleID, 18);
-        theurgyResult6 = retval;
+        theurgyResult6 = get_player_attribute_total(roleID, 18);
         hasEffect = (theurgy_data.type == 8) ? 0 : 1;
         player_attack_anim(battle_enemy_idx, hasEffect);
         process_Script(battle_enemy_idx, &objects[itemObjID].data[3]);
@@ -6448,8 +6345,7 @@ int16_t process_Battle(int16_t battleScene, int16_t surpriseFlag) {
         if (redraw_hp_mp_flag) {
           actionParam = battle_enemy_idx;
           npc_dir_frame = 0;
-          get_player_attribute_total(roleID, 18);
-          theurgyResult6 = retval;
+          theurgyResult6 = get_player_attribute_total(roleID, 18);
           if (theurgy_data.type == 9) {
             npc_dir_frame = -1;
             cast_theurgy_anim(itemObjID);
@@ -6545,8 +6441,7 @@ int16_t process_Battle(int16_t battleScene, int16_t surpriseFlag) {
         theurgyResult6 = 0;
         for (i = 0; i <= enemy_pos_count; i++) {
           k = party[i].role;
-          check_player_alive(i);
-          if (retval > 1 && playerRoles(k, 9) >= theurgy_data.costMP) {
+          if (check_player_alive(i) > 1 && playerRoles(k, 9) >= theurgy_data.costMP) {
             playerRoles(k, 9) -= theurgy_data.costMP;
             theurgyResult6 += playerRoles(k, 17) + playerRoles(k, 18);
           }
@@ -6575,8 +6470,7 @@ int16_t process_Battle(int16_t battleScene, int16_t surpriseFlag) {
         }
         rng = 0;
         for (i = 0; i <= enemy_pos_count; i++) {
-          check_player_alive(i);
-          rng += (retval > 1);
+          rng += (check_player_alive(i) > 1);
           battle_order_array[i] = i;
         }
         swap_values((int16_t *)&battle_order_array[enemy_pos_count], (int16_t *)&battle_order_array[battle_enemy_idx]);
@@ -6584,8 +6478,7 @@ int16_t process_Battle(int16_t battleScene, int16_t surpriseFlag) {
           if (theurgy_data.type < 9) {
             for (k = 0; k <= enemy_pos_count; k++) {
               i = battle_order_array[k];
-              check_player_alive(i);
-              if (retval > 1) {
+              if (check_player_alive(i) > 1) {
                 if (i != battle_enemy_idx) {
                   player_battle_sprite[i].direction = 5;
                   draw_battle_scene(3, 0);
@@ -6638,16 +6531,15 @@ int16_t process_Battle(int16_t battleScene, int16_t surpriseFlag) {
             prevRoleIdx += hasEffect;
         }
         rng2 = VB_rtcRandomNext();
-        get_player_attribute_total(party[battle_enemy_idx].role, 21);
-        hasEffect = ((float)retval >= (float)((double)prevRoleIdx * rng2));
+        hasEffect = ((float)get_player_attribute_total(party[battle_enemy_idx].role, 21) >=
+                     (float)((double)prevRoleIdx * rng2));
         if (surpriseFlag == 0)
           hasEffect = 0;
         flee_from_battle(battle_enemy_idx, &hasEffect);
         break;
       }
       case 9:
-        random_alive_party_member();
-        menuResult2 = retval;
+        menuResult2 = random_alive_party_member();
         if (menuResult2 != battle_enemy_idx)
           player_attack_player(battle_enemy_idx, menuResult2);
         break;
@@ -6658,8 +6550,7 @@ int16_t process_Battle(int16_t battleScene, int16_t surpriseFlag) {
         break;
       }
 
-      count_alive_enemies();
-      if (retval < theurgyResult5) {
+      if (count_alive_enemies() < theurgyResult5) {
         npc_sprite_num = -1;
         play_sound(battle_enemy_hp, 0);
       }
@@ -6677,8 +6568,7 @@ int16_t process_Battle(int16_t battleScene, int16_t surpriseFlag) {
         npc_dir_frame = 0;
         play_theurgy_rng_anim();
       }
-      count_alive_enemies();
-      if (retval > 0 && magic_select_idx) {
+      if (count_alive_enemies() > 0 && magic_select_idx) {
         for (i = 0; i <= enemy_pos_count; i++) {
           if (player_battle_sprite[i].direction >= 5) {
             player_battle_sprite[i].direction = 0;
@@ -6690,13 +6580,11 @@ int16_t process_Battle(int16_t battleScene, int16_t surpriseFlag) {
         magic_select_idx = 0;
       }
       update_player_battle_status();
-      check_party_alive();
-      if (retval == 0) {
+      if (check_party_alive() == 0) {
         battleResult = 1;
         goto L_00420C0E;
       }
-      count_alive_enemies();
-      if (retval <= 0) {
+      if (count_alive_enemies() <= 0) {
         battleResult = 3;
         goto L_00420C0E;
       }
@@ -6831,6 +6719,7 @@ void process_scripts(int16_t eventObjID, uint16_t *scriptEntry, int16_t opcode, 
   int16_t rankDist;
   int16_t loopStart, loopEnd;
   int16_t totalChange, oldVal, oldMP;
+  int16_t defenseVal;
   double rng;
   int16_t walkSpeed;
   int16_t walkDir;
@@ -7059,8 +6948,7 @@ void process_scripts(int16_t eventObjID, uint16_t *scriptEntry, int16_t opcode, 
   case 32:
     if ((*operand2) == 0)
       (*operand2) = 1;
-    count_item_total((*operand1));
-    if (retval < (*operand2) && (*operand3) != 0) {
+    if (count_item_total((*operand1)) < (*operand2) && (*operand3) != 0) {
       *scriptEntry = (uint16_t)((*operand3) - 1);
       return;
     }
@@ -7188,8 +7076,8 @@ void process_scripts(int16_t eventObjID, uint16_t *scriptEntry, int16_t opcode, 
       loopEnd = eventObjID;
     }
     for (j = loopStart; j <= (uint16_t)loopEnd; j++) {
-      get_player_attribute_total(party[j].role, 22);
-      if ((float)(VB_rtcRandomNext() * 100.0) > (float)retval) {
+      defenseVal = get_player_attribute_total(party[j].role, 22);
+      if ((float)(VB_rtcRandomNext() * 100.0) > (float)defenseVal) {
         for (i = 0; i <= 15; i++)
           if (poison_status[j][i].poisonID == (*operand2))
             goto L_op41_done;
@@ -7579,7 +7467,7 @@ void process_scripts(int16_t eventObjID, uint16_t *scriptEntry, int16_t opcode, 
     }
     return;
   case 77:
-    retval = read_key();
+    var1 = read_key();
     return;
   case 78:
     redraw_flag |= 32;
@@ -7646,8 +7534,7 @@ void process_scripts(int16_t eventObjID, uint16_t *scriptEntry, int16_t opcode, 
   case 88:
     if ((*operand2) <= 0)
       (*operand2) = 1;
-    count_item_total((*operand1));
-    if (retval < (*operand2)) {
+    if (count_item_total((*operand1)) < (*operand2)) {
       *scriptEntry = (uint16_t)((*operand3) - 1);
     }
     return;
@@ -8094,8 +7981,7 @@ void process_scripts(int16_t eventObjID, uint16_t *scriptEntry, int16_t opcode, 
   case 134:
     if ((*operand2) == 0)
       (*operand2) = 1;
-    count_equipped_items((*operand1));
-    if (retval < (*operand2)) {
+    if (count_equipped_items((*operand1)) < (*operand2)) {
       *scriptEntry = (uint16_t)((*operand3) - 1);
     }
     return;
@@ -8581,19 +8467,17 @@ int main(int argc, char *argv[]) {
 
   // NOTE: PAL_InitDSound remake 接 audio.cpp/miniaudio（设备失败返回 1 =
   // golden 无声卡路径），不再有 DirectSound 对象。
-  {
-    int32_t dsInitResult = PAL_InitDSound(0);
-    if (dsInitResult != 0) {
-      music_mode = 0;
-      has_sfx_raw = 0;
-    } else {
-      music_mode = 2;
-      has_sfx_raw = 1;
-      load_sound_data();
-    }
-    use_cd_flag = (music_mode != 0);
-    has_sfx = (has_sfx_raw != 0);
+  int32_t dsInitResult = PAL_InitDSound(0);
+  if (dsInitResult != 0) {
+    music_mode = 0;
+    has_sfx_raw = 0;
+  } else {
+    music_mode = 2;
+    has_sfx_raw = 1;
+    load_sound_data();
   }
+  use_cd_flag = (music_mode != 0);
+  has_sfx = (has_sfx_raw != 0);
 
   // NOTE: PAL_InitInput_Win remake 恒 0（kitty 输入直读）；golden 失败 →
   // MsgBox + End，该分支不可达。
@@ -8644,17 +8528,13 @@ L_title:
   battle_order_array[1] = 8;
   battle_order_array[100] = (uint16_t)-1;
   battle_order_array[101] = (uint16_t)-1;
-  {
-    int16_t menuParam = 0;
-    menu_select(&menuParam, 112, 84, (uint16_t)-1, 2);
-  }
+  saveChoice = (int16_t)menu_select(&(int16_t){0}, 112, 84, (uint16_t)-1, 2);
   redraw_flag = 16;
-  saveChoice = (int16_t)retval;
   if (saveChoice == 1) {
-    check_save_file();
-    if (retval < 0)
+    saveChoice = check_save_file();
+    if (saveChoice < 0)
       goto L_title;
-    LoadRPG_internal((uint16_t)(retval + 1));
+    LoadRPG_internal((uint16_t)(saveChoice + 1));
     if (RPG_save_number == 0)
       goto L_newgame;
     redraw_flag |= 2;
@@ -8666,20 +8546,18 @@ L_title:
       PAL_PlayAvi(NULL, 3, 0);
     scene_to_load = 1;
     redraw_flag |= 13;
-    {
-      uint16_t *flat = (uint16_t *)&playerExp;
-      for (row = 0; row <= 4; row++) {
-        for (col = 0; col <= 7; col++) {
-          int16_t r1 = 0, r2 = 0;
-          if (col > 0) {
-            r1 = vb_round_banker_i16_d((VB_rtcRandomNext() * 2.0) + 2.0);
-            r2 = vb_round_banker_i16_d(VB_rtcRandomNext() * 20.0);
-          }
-          float expVal = (float)r2;
-          int idx = (col * MAX_PLAYER_ROLES * 4) + (row * 4);
-          memcpy(&flat[idx], &expVal, 4);
-          flat[idx + 2] = (uint16_t)(playerRoles(row, 6) + r1);
+    uint16_t *flat = (uint16_t *)&playerExp;
+    for (row = 0; row <= 4; row++) {
+      for (col = 0; col <= 7; col++) {
+        int16_t r1 = 0, r2 = 0;
+        if (col > 0) {
+          r1 = vb_round_banker_i16_d((VB_rtcRandomNext() * 2.0) + 2.0);
+          r2 = vb_round_banker_i16_d(VB_rtcRandomNext() * 20.0);
         }
+        float expVal = (float)r2;
+        int idx = (col * MAX_PLAYER_ROLES * 4) + (row * 4);
+        memcpy(&flat[idx], &expVal, 4);
+        flat[idx + 2] = (uint16_t)(playerRoles(row, 6) + r1);
       }
     }
   }

@@ -424,17 +424,15 @@ int kitty_video_init(int src_w, int src_h, int scale) {
   k_arm_signals();
   atexit(kitty_terminal_restore);
   k_enter_screen();
-  {
-    int kb = k_query_keyboard_flags();
-    if (kb < 0 || (kb & 11) != 11) {
-      k_leave_screen();
-      k_frame_teardown();
-      fprintf(stderr,
-              "[kitty] keyboard protocol not active (%s); needs kitty "
-              "directly; exiting\n",
-              kb < 0 ? "no CSI ?u reply" : "flags!=11 after push >11u");
-      exit(1);
-    }
+  int kb = k_query_keyboard_flags();
+  if (kb < 0 || (kb & 11) != 11) {
+    k_leave_screen();
+    k_frame_teardown();
+    fprintf(stderr,
+            "[kitty] keyboard protocol not active (%s); needs kitty "
+            "directly; exiting\n",
+            kb < 0 ? "no CSI ?u reply" : "flags!=11 after push >11u");
+    exit(1);
   }
   k_video_up_flag = true;
   return 0;
@@ -703,52 +701,50 @@ static bool k_parse_one(void) {
       }
       return false;
     }
-    {
-      uint8_t final = k_pending[i];
-      const uint8_t *pp = k_pending + 2;
-      size_t pl = i - 2;
-      int action = -1;
-      int kind = 0;
-      switch (final) {
-      case 'u': {
-        int code = k_param(pp, pl, 0, 0);
-        if (code != 0) {
-          int mods = k_param(pp, pl, 1, 1);
-          int base = k_param_sub(pp, pl, 0, 2, 0);
-          kind = k_param_sub(pp, pl, 1, 1, 1);
-          if ((mods & 4) && (code == 99 || code == 67 || base == 99)) {
-            k_quit = 1;
-            break;
-          }
-          action = k_code_to_dik((uint32_t)code);
+    uint8_t final = k_pending[i];
+    const uint8_t *pp = k_pending + 2;
+    size_t pl = i - 2;
+    int action = -1;
+    int kind = 0;
+    switch (final) {
+    case 'u': {
+      int code = k_param(pp, pl, 0, 0);
+      if (code != 0) {
+        int mods = k_param(pp, pl, 1, 1);
+        int base = k_param_sub(pp, pl, 0, 2, 0);
+        kind = k_param_sub(pp, pl, 1, 1, 1);
+        if ((mods & 4) && (code == 99 || code == 67 || base == 99)) {
+          k_quit = 1;
+          break;
         }
-        break;
+        action = k_code_to_dik((uint32_t)code);
       }
-      case 'A':
-      case 'B':
-      case 'C':
-      case 'D':
-      case 'H':
-      case 'F':
-      case 'E':
-      case 'P':
-      case 'Q':
-      case 'S':
-        kind = k_param_sub(pp, pl, 1, 1, 1);
-        action = k_csi_letter_dik(final);
-        break;
-      case '~':
-        kind = k_param_sub(pp, pl, 1, 1, 1);
-        action = k_csi_tilde_dik(k_param(pp, pl, 0, 0));
-        break;
-      default:
-        break;
-      }
-      k_consume(i + 1);
-      if (action >= 0)
-        k_key_event(action, kind);
-      return true;
+      break;
     }
+    case 'A':
+    case 'B':
+    case 'C':
+    case 'D':
+    case 'H':
+    case 'F':
+    case 'E':
+    case 'P':
+    case 'Q':
+    case 'S':
+      kind = k_param_sub(pp, pl, 1, 1, 1);
+      action = k_csi_letter_dik(final);
+      break;
+    case '~':
+      kind = k_param_sub(pp, pl, 1, 1, 1);
+      action = k_csi_tilde_dik(k_param(pp, pl, 0, 0));
+      break;
+    default:
+      break;
+    }
+    k_consume(i + 1);
+    if (action >= 0)
+      k_key_event(action, kind);
+    return true;
   }
 
   if (b1 == '_' || b1 == 'P' || b1 == 'X' || b1 == '^') {

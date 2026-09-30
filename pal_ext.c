@@ -71,25 +71,23 @@ static void pal_present_direct(void) {
   pal_screen_dirty = 0;
   if (!kitty_video_up())
     return;
-  {
-    // NOTE: remake 增补内容哈希去重（索引页 + 调色板 LUT 未变不重发）——golden
-    // 靠 WM_PAINT 按需重绘，remake 无消息泵，防静态菜单灌满终端。
-    static uint32_t lastSig = 0;
-    const uint8_t *lut = (const uint8_t *)pv_lut;
-    uint32_t h = 2166136261u;
-    int i;
-    for (i = 0; i < 64000; i++) {
-      h ^= screen_surf[i];
-      h *= 16777619u;
-    }
-    for (i = 0; i < 1024; i++) {
-      h ^= lut[i];
-      h *= 16777619u;
-    }
-    if (h == lastSig)
-      return;
-    lastSig = h;
+  // NOTE: remake 增补内容哈希去重（索引页 + 调色板 LUT 未变不重发）——golden
+  // 靠 WM_PAINT 按需重绘，remake 无消息泵，防静态菜单灌满终端。
+  static uint32_t lastSig = 0;
+  const uint8_t *lut = (const uint8_t *)pv_lut;
+  uint32_t h = 2166136261u;
+  int i;
+  for (i = 0; i < 64000; i++) {
+    h ^= screen_surf[i];
+    h *= 16777619u;
   }
+  for (i = 0; i < 1024; i++) {
+    h ^= lut[i];
+    h *= 16777619u;
+  }
+  if (h == lastSig)
+    return;
+  lastSig = h;
   kitty_present_frame(screen_surf, pv_lut);
 }
 
@@ -354,45 +352,43 @@ static void pal_blit_rle_mode(uint8_t *dstbase, const uint8_t *bitmap, int x, in
       remain -= count;
     }
     rle = rp;
-    {
-      const uint8_t *sp = rowbuf + leftSkip;
-      uint8_t *dp = dstbase + dstOfs;
-      for (i = 0; i < outW; i++) {
-        uint8_t pix = sp[i];
-        if (pix == 0xFF)
-          continue;
-        switch (mode) {
-        case 1: {
-          uint8_t low = (uint8_t)((pix & 0x0F) + effect);
-          if ((int8_t)low < 0)
-            low = 0;
-          else if (low > 0x0F)
-            low = 0x0F;
-          dp[i] = (uint8_t)((pix & 0xF0) | low);
-          break;
-        }
-        case 2: {
-          int t = (pix & 0x0F) - (effect & 0x0F);
-          dp[i] = (uint8_t)(t > 0 ? ((effect & 0xF0) | t) : 0);
-          break;
-        }
-        case 3:
-          dp[i] = (uint8_t)((dp[i] & 0xF0) | ((dp[i] & 0x0F) >> 1));
-          break;
-        case 4: {
-          uint8_t nlow = (uint8_t)((pix & 0x0F) + effect);
-          if (nlow < effect)
-            dp[i] = (uint8_t)(pix & 0xF0);
-          else if ((int8_t)nlow > 15)
-            dp[i] = 0x0F;
-          else
-            dp[i] = (uint8_t)((pix & 0xF0) | nlow);
-          break;
-        }
-        default:
-          dp[i] = pix;
-          break;
-        }
+    const uint8_t *sp = rowbuf + leftSkip;
+    uint8_t *dp = dstbase + dstOfs;
+    for (i = 0; i < outW; i++) {
+      uint8_t pix = sp[i];
+      if (pix == 0xFF)
+        continue;
+      switch (mode) {
+      case 1: {
+        uint8_t low = (uint8_t)((pix & 0x0F) + effect);
+        if ((int8_t)low < 0)
+          low = 0;
+        else if (low > 0x0F)
+          low = 0x0F;
+        dp[i] = (uint8_t)((pix & 0xF0) | low);
+        break;
+      }
+      case 2: {
+        int t = (pix & 0x0F) - (effect & 0x0F);
+        dp[i] = (uint8_t)(t > 0 ? ((effect & 0xF0) | t) : 0);
+        break;
+      }
+      case 3:
+        dp[i] = (uint8_t)((dp[i] & 0xF0) | ((dp[i] & 0x0F) >> 1));
+        break;
+      case 4: {
+        uint8_t nlow = (uint8_t)((pix & 0x0F) + effect);
+        if (nlow < effect)
+          dp[i] = (uint8_t)(pix & 0xF0);
+        else if ((int8_t)nlow > 15)
+          dp[i] = 0x0F;
+        else
+          dp[i] = (uint8_t)((pix & 0xF0) | nlow);
+        break;
+      }
+      default:
+        dp[i] = pix;
+        break;
       }
     }
     dstOfs += 320;
@@ -573,13 +569,11 @@ static void pal_rle_copy(uint16_t val) {
       yj1_value[node] = yj1_value[other];
       yj1_weight[other] = w;
       yj1_value[other] = v;
-      {
-        uint16_t l = yj1_left[node], r = yj1_right[node];
-        yj1_left[node] = yj1_left[other];
-        yj1_right[node] = yj1_right[other];
-        yj1_left[other] = l;
-        yj1_right[other] = r;
-      }
+      uint16_t l = yj1_left[node], r = yj1_right[node];
+      yj1_left[node] = yj1_left[other];
+      yj1_right[node] = yj1_right[other];
+      yj1_left[other] = l;
+      yj1_right[other] = r;
       node = other;
     }
     yj1_weight[node]++;
@@ -628,17 +622,15 @@ static int pal_unpak_core(const uint8_t *packed, uint8_t *dst, int dstCap) {
       bitpos = match_start + (unsigned int)bits + 6u;
       if (dist == YJ1_EOS)
         break;
-      {
-        const uint8_t *pre = out - dist - 1;
-        int len = (int)val - 0xfd;
-        if (len > (int)(outEnd - out))
-          len = (int)(outEnd - out);
-        for (i = 0; i < len; i++)
-          *out++ = *pre++;
-        decoded += len;
-        if (len < (int)val - 0xfd)
-          break;
-      }
+      const uint8_t *pre = out - dist - 1;
+      int len = (int)val - 0xfd;
+      if (len > (int)(outEnd - out))
+        len = (int)(outEnd - out);
+      for (i = 0; i < len; i++)
+        *out++ = *pre++;
+      decoded += len;
+      if (len < (int)val - 0xfd)
+        break;
     } else {
       if (out >= outEnd)
         break;
@@ -841,26 +833,24 @@ void PAL_ExMap(int16_t vpX, int16_t vpY, const uint8_t *mapData, uint8_t *bitBuf
     uint8_t flags = bitbuf[index];
     if (flags == 0)
       continue;
-    {
-      int parity = index & 1;
-      int screenX = 16 * (parity + 2 * ((index >> 1) & 0x3F)) - vpX - 16;
-      int screenY = 8 * (parity + 2 * (index >> 7)) - vpY + 7;
-      uint32_t cell;
-      memcpy(&cell, mapData + 4 * index, 4);
-      if (flags & 1) {
-        uint16_t frame = (uint16_t)((cell & 0xFF) | ((cell >> 4) & 0x100));
-        PAL_QueueSprite((const uint8_t *)gop + 2 * gop[frame], (int16_t)screenX,
-                        (int16_t)(screenY + 8 * ((cell >> 8) & 0xF)), (uint16_t)(8 * ((cell >> 8) & 0xF)),
-                        PAL_SpriteHeight((const uint8_t *)gop + 2 * gop[frame]));
-      }
-      if (flags & 2) {
-        uint32_t top = cell >> 16;
-        uint16_t frame = (uint16_t)((top & 0xFF) | ((top >> 4) & 0x100));
-        if (frame > 0) {
-          PAL_QueueSprite((const uint8_t *)gop + 2 * gop[frame - 1], (int16_t)screenX,
-                          (int16_t)(screenY + 8 * ((top >> 8) & 0xF) + 1), (uint16_t)(8 * ((top >> 8) & 0xF) + 1),
-                          PAL_SpriteHeight((const uint8_t *)gop + 2 * gop[frame - 1]));
-        }
+    int parity = index & 1;
+    int screenX = 16 * (parity + 2 * ((index >> 1) & 0x3F)) - vpX - 16;
+    int screenY = 8 * (parity + 2 * (index >> 7)) - vpY + 7;
+    uint32_t cell;
+    memcpy(&cell, mapData + 4 * index, 4);
+    if (flags & 1) {
+      uint16_t frame = (uint16_t)((cell & 0xFF) | ((cell >> 4) & 0x100));
+      PAL_QueueSprite((const uint8_t *)gop + 2 * gop[frame], (int16_t)screenX,
+                      (int16_t)(screenY + 8 * ((cell >> 8) & 0xF)), (uint16_t)(8 * ((cell >> 8) & 0xF)),
+                      PAL_SpriteHeight((const uint8_t *)gop + 2 * gop[frame]));
+    }
+    if (flags & 2) {
+      uint32_t top = cell >> 16;
+      uint16_t frame = (uint16_t)((top & 0xFF) | ((top >> 4) & 0x100));
+      if (frame > 0) {
+        PAL_QueueSprite((const uint8_t *)gop + 2 * gop[frame - 1], (int16_t)screenX,
+                        (int16_t)(screenY + 8 * ((top >> 8) & 0xF) + 1), (uint16_t)(8 * ((top >> 8) & 0xF) + 1),
+                        PAL_SpriteHeight((const uint8_t *)gop + 2 * gop[frame - 1]));
       }
     }
   }
@@ -995,13 +985,11 @@ static void pal_nip_wave_scroll(uint8_t *dst) {
   if (b > 0) {
     if (b > 320)
       b = 320;
-    {
-      uint8_t *d = dst + 64000 - b;
-      const uint8_t *s = dst + 64000 - 320;
-      int i;
-      for (i = 0; i < b; i++)
-        d[i] = s[i];
-    }
+    uint8_t *d = dst + 64000 - b;
+    const uint8_t *s = dst + 64000 - 320;
+    int i;
+    for (i = 0; i < b; i++)
+      d[i] = s[i];
   }
 }
 

@@ -387,17 +387,15 @@ int AVI_Play(int number, int skippable) {
   snprintf(name, sizeof name, "%d.AVI", number);
   filebuf = NULL;
   fsz = 0;
-  {
-    FILE *fp = avi_open_data(name);
-    if (fp == NULL) {
-      fprintf(stderr, "[avi] %s not found, skipped\n", name);
-      return -1;
-    }
-    filebuf = avi_slurp(fp, &fsz);
-    fclose(fp);
-    if (filebuf == NULL)
-      return -1;
+  FILE *fp = avi_open_data(name);
+  if (fp == NULL) {
+    fprintf(stderr, "[avi] %s not found, skipped\n", name);
+    return -1;
   }
+  filebuf = avi_slurp(fp, &fsz);
+  fclose(fp);
+  if (filebuf == NULL)
+    return -1;
 
   if (avi_parse(filebuf, (size_t)fsz, &av) != 0) {
     fprintf(stderr, "[avi] %s: parse failed or unsupported, skipped\n", name);
