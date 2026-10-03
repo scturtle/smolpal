@@ -329,7 +329,8 @@ int16_t check_key_pressed(void) {
 int16_t increment_script_ip(int16_t ip) {
   if (ip == 32767)
     return -32768;
-  return ip + 1;
+  else
+    return ip + 1;
 }
 
 int16_t read_key(void) {
@@ -410,12 +411,9 @@ void check_trigger_flag(void) {
     if (flag_parallel_mutex) {
       restore_screen();
     }
-    goto L_004038E8;
-  }
-  if (flag_trigger) {
+  } else if (flag_trigger) {
     show_dialog_image_and_wait();
   }
-L_004038E8:
   flag_trigger = 0;
   flag_key_updown = 0;
 }
@@ -453,7 +451,7 @@ void load_event_objects(void) {
 }
 
 int32_t read_file_and_close(const char *filename, int16_t subfileNum) {
-  int32_t h = open_file(filename, 0);
+  int32_t h = open_file_required(filename);
   get_subfile_len(h, subfileNum);
   pal_hread(h, global_buf_2, tmp_file_size);
   pal_lclose(h);
@@ -503,14 +501,17 @@ void restore_screen(void) {
 void menu_inventory(void) {
   int32_t tmp2;
   tmp2 = menu_loop(&(int16_t){0}, 30, 60, 22, 2, 2);
-  if (tmp2 == 0) {
-    inventory_use_menu();
-  } else if (tmp2 == 1) {
-    select_magic();
+  switch (tmp2) {
+    case 0:
+      inventory_use_menu();
+      break;
+    case 1:
+      select_magic();
+      break;
   }
 }
 
-int load_map_data(int16_t x, int16_t y, int16_t layer) {
+int16_t load_map_data(int16_t x, int16_t y, int16_t layer) {
   int16_t tmp2 = 0;
   PAL_ExGm1(x, y, (const uint8_t *)map_data_buf, (uint16_t *)&tmp2);
   if (tmp2)
@@ -626,12 +627,14 @@ void check_in_battle(int16_t shakeMode) {
   if (flag_battling) {
     draw_battle_scene(1, 0);
     return;
+  } else {
+    PAL_ClearMenu(global_buf_2, 8192);
+    get_sprites_curr_scene();
+    get_party_role_id();
+    render_scene_with_rng();
+    render_scene_and_fade(shakeMode);
+    return;
   }
-  PAL_ClearMenu(global_buf_2, 8192);
-  get_sprites_curr_scene();
-  get_party_role_id();
-  render_scene_with_rng();
-  render_scene_and_fade(shakeMode);
 }
 
 void menu_Status(void) {
@@ -748,6 +751,16 @@ int32_t open_file(const char *filename, int16_t writeMode) {
   return h;
 }
 
+// NOTE: golden 对 DLL 句柄失败静默降级（零数据垃圾状态）；remake 偏离为报错退出（remake.md §3）。
+int32_t open_file_required(const char *filename) {
+  int32_t h = open_file(filename, 0);
+  if (h <= 0) {
+    fprintf(stderr, "[remake] 无法打开资源文件 %s（检查 $PAL98_DATA 或 CWD 数据目录）\n", filename);
+    exit(1);
+  }
+  return h;
+}
+
 void load_sound_data(void) {
   PAL_LoadDSound(27, 1);
   PAL_LoadDSound(28, 1);
@@ -852,7 +865,7 @@ void fade_out_palette(int16_t speed) {
   }
 }
 
-void draw_menu_with_text_and_hp(int16_t wordIdx, int16_t x, int16_t y, int16_t hp, int16_t labelIdx) {
+void draw_menu_with_text_and_hp(int16_t wordIdx, int16_t x, int16_t y, int32_t hp, int16_t labelIdx) {
   frame_menu(x, y, 5, labelIdx);
   draw_string(x + 10, y + 10, wordIdx, 3, 0);
   show_small_number(x + 48, y + 15, hp, 6);
@@ -985,8 +998,10 @@ void enemy_cast_anim(int16_t enemyIdx) {
       draw_battle_scene(enemy_runtime_data[enemyIdx].actWaitFrames, 0);
     }
     return;
+  } else {
+    draw_battle_scene(1, 0);
+    return;
   }
-  draw_battle_scene(1, 0);
 }
 
 void show_fbp_picture(int16_t subfileNum, int16_t rngSubfile) {
@@ -1085,19 +1100,19 @@ void sell_item_menu(void) {
   int16_t selected;
   int32_t answer;
   int16_t cursorPos = 0;
-  do {
+  for (;;) {
     draw_menu_with_text_and_hp(21, 100, 150, RPG_money, 0);
     selected = select_item_with_filter(&cursorPos, 1, 32);
-    if (selected >= 0) {
-      push_screen_buffer();
-      answer = (uint16_t)yes_no_menu(0, 19);
-      if (answer == 1) {
-        remove_inventory_item((uint16_t)selected, 1);
-        RPG_money += objects[selected].data[1] / 2;
-      }
-      restore_screen();
+    if (selected < 0)
+      break;
+    push_screen_buffer();
+    answer = (uint16_t)yes_no_menu(0, 19);
+    if (answer == 1) {
+      remove_inventory_item((uint16_t)selected, 1);
+      RPG_money += objects[selected].data[1] / 2;
     }
-  } while (selected >= 0);
+    restore_screen();
+  }
   draw_battle_row_sprite();
 }
 
@@ -1264,26 +1279,26 @@ int16_t menu_select_party(int16_t x, int16_t y, int16_t spriteNum) {
 
 void select_magic(void) {
   int16_t magicCount;
-  int32_t j = 0;
+  int32_t j;
   int16_t itemIdx = 0;
-L_00407140:
-  int16_t menuResult = select_item_with_filter(&magic_select_tmp, 0, 1);
-  if (menuResult < 0)
-    return;
-  PAL_GetBin((uint16_t *)&magicCount, objects[menuResult].data[6], 4);
-  if (magicCount == 0) {
+  do {
+    int16_t menuResult = select_item_with_filter(&magic_select_tmp, 0, 1);
+    if (menuResult < 0)
+      return;
+    PAL_GetBin((uint16_t *)&magicCount, objects[menuResult].data[6], 4);
+    if (magicCount != 0) {
+      draw_battle_row_sprite();
+      j = 0;
+      process_Script(j, &objects[menuResult].data[2]);
+      if (redraw_hp_mp_flag) {
+        PAL_GetBin((uint16_t *)&magicCount, objects[menuResult].data[6], 3);
+        if (magicCount)
+          remove_inventory_item(menuResult, 1);
+      }
+      return;
+    }
     show_item_description(&itemIdx, 110, 2, magic_select_tmp);
-    if (itemIdx < 0)
-      goto L_00407140;
-    return;
-  }
-  draw_battle_row_sprite();
-  process_Script(j, &objects[menuResult].data[2]);
-  if (redraw_hp_mp_flag) {
-    PAL_GetBin((uint16_t *)&magicCount, objects[menuResult].data[6], 3);
-    if (magicCount)
-      remove_inventory_item(menuResult, 1);
-  }
+  } while (itemIdx < 0);
 }
 
 void draw_object_icon(int16_t x, int16_t y, int16_t invIdx) {
@@ -1449,8 +1464,10 @@ void play_rng_effect(int16_t rngSubfile, int16_t frameCount) {
   if (flag_battling) {
     PAL_CopyMem(global_buf_1, bg_buf, 64000);
     return;
+  } else {
+    draw_battle_row_sprite();
+    return;
   }
-  draw_battle_row_sprite();
 }
 
 void draw_rng_frame(int16_t frameDelay, int16_t frameCount, int16_t yPos) {
@@ -1474,7 +1491,8 @@ int16_t query_midi_status(void) {
   pal_mciSendStringA("status midi mode", mciResult, sizeof(mciResult));
   if (strncmp(mciResult, "playing", 7) == 0)
     return 1;
-  return 0;
+  else
+    return 0;
 }
 
 int16_t query_cd_status(void) {
@@ -1482,7 +1500,8 @@ int16_t query_cd_status(void) {
   pal_mciSendStringA("status cdtrack mode", mciResult, sizeof(mciResult));
   if (strncmp(mciResult, "playing", 7) == 0)
     return 1;
-  return 0;
+  else
+    return 0;
 }
 
 void animate_battle_sprites(int16_t startIdx, int16_t endIdx) {
@@ -1505,7 +1524,7 @@ void get_scene_map_source(int16_t sceneID) {
   if (scenes[sceneID].mapNum != curr_scene_id_cache) {
     read_file_and_close("MAP.MKF", scenes[sceneID].mapNum);
     PAL_Decompress((uint8_t *)global_buf_2, (uint8_t *)map_data_buf, (int32_t)sizeof(map_data_buf));
-    int32_t gopFile = open_file("GOP.MKF", 0);
+    int32_t gopFile = open_file_required("GOP.MKF");
     get_subfile_len(gopFile, scenes[sceneID].mapNum);
     pal_hread(gopFile, mgo_frame_offsets, tmp_file_size);
     pal_lclose(gopFile);
@@ -1647,20 +1666,19 @@ void npc_walk_one_step(int16_t npcIdx, int16_t stepCount) {
       walkFrames = 4;
     npc_display_data[npcIdx].currentFrame = (npc_display_data[npcIdx].currentFrame + 1) % walkFrames;
     return;
-  }
-  if (npc_display_data[npcIdx].spriteFramesAuto > 0) {
+  } else if (npc_display_data[npcIdx].spriteFramesAuto > 0) {
     npc_display_data[npcIdx].currentFrame =
         (npc_display_data[npcIdx].currentFrame + 1) % npc_display_data[npcIdx].spriteFramesAuto;
+    return;
   }
 }
 
 void render_scene_with_rng(void) {
-  if (multi_event_state == 0) {
-    PAL_ExMap(RPG_viewport_x, RPG_viewport_y, (const uint8_t *)map_data_buf, (uint8_t *)global_buf_2,
-              mgo_frame_offsets);
+  switch (multi_event_state) {
+  case 0:
+    PAL_ExMap(RPG_viewport_x, RPG_viewport_y, (const uint8_t *)map_data_buf, (uint8_t *)global_buf_2, mgo_frame_offsets);
     return;
-  }
-  if (multi_event_state == 2) {
+  case 2:
     if ((int16_t)multi_event_param <= 0)
       multi_event_param = 1;
     if ((multi_event_param_2 % multi_event_param) == 0) {
@@ -1676,6 +1694,7 @@ void render_scene_with_rng(void) {
       }
     }
     multi_event_param_2++;
+    return;
   }
 }
 
@@ -1701,37 +1720,35 @@ void remove_inventory_item(int16_t itemID, int16_t amount) {
 }
 
 void scene_transition(void) {
-L_00409288:
-  flag_battling = 0;
-  scene_enter_flag = 0;
-  scene_leave_flag = 0;
-  if (redraw_flag & 32) {
-    LoadRPG_internal(rpg_to_load);
-    goto L_004092F6;
-  }
-  if (RPG_curr_scene != scene_to_load) {
-    RPG_screen_wave_grade = 0;
-    wave_progression = 0;
-    if (RPG_curr_scene > 0)
-      load_event_objects();
-  }
-L_004092F6:
-  multi_event_state = 0;
-  team_abstract_x = 160;
-  team_abstract_y = 112;
-  RPG_curr_scene = scene_to_load;
-  if (redraw_flag & 4)
-    load_scene_events(RPG_curr_scene);
-  get_scene_map_source(RPG_curr_scene);
-  load_npc_sprites();
-  draw_battle_row_sprite();
-  if (redraw_flag & 1)
-    load_team_mgo();
-  if (redraw_flag & 8) {
+  for (;;) {
+    flag_battling = 0;
+    scene_enter_flag = 0;
+    scene_leave_flag = 0;
+    if (redraw_flag & 32) {
+      LoadRPG_internal(rpg_to_load);
+    } else if (RPG_curr_scene != scene_to_load) {
+      RPG_screen_wave_grade = 0;
+      wave_progression = 0;
+      if (RPG_curr_scene > 0)
+        load_event_objects();
+    }
+    multi_event_state = 0;
+    team_abstract_x = 160;
+    team_abstract_y = 112;
+    RPG_curr_scene = scene_to_load;
+    if (redraw_flag & 4)
+      load_scene_events(RPG_curr_scene);
+    get_scene_map_source(RPG_curr_scene);
+    load_npc_sprites();
+    draw_battle_row_sprite();
+    if (redraw_flag & 1)
+      load_team_mgo();
+    if ((redraw_flag & 8) == 0)
+      break;
     redraw_flag = redraw_flag & 2;
     process_Script(0, &scenes[RPG_curr_scene].scriptOnEnter);
-    if (RPG_curr_scene != scene_to_load)
-      goto L_00409288;
+    if (RPG_curr_scene == scene_to_load)
+      break;
   }
   if (redraw_flag & 2)
     play_all_kinds_music(RPG_music_number, 1);
@@ -1786,17 +1803,21 @@ void play_cd(int16_t trackNum, int16_t musicNum, int16_t trackValid) {
   if (music_mode == 2) {
     midi_close();
     cd_stop();
-    if (use_cd_flag && trackNum > 0) {
-      // NOTE: golden 经 MCI 播 CD-DA；remake 无光驱，经 pal_playCdTrack 回退 RIX
-      // musicNum（SDLPAL 0x00A3 约定，与 golden 非 CD 分支同参）。
-      pal_playCdTrack(trackNum, musicNum, trackValid);
-      cd_track_valid = trackValid;
-      cd_active = 1;
-      cd_track_num = trackNum;
+    if (use_cd_flag) {
+      if (trackNum > 0) {
+        // NOTE: golden 经 MCI 播 CD-DA；remake 无光驱，经 pal_playCdTrack 回退 RIX
+        // musicNum（SDLPAL 0x00A3 约定，与 golden 非 CD 分支同参）。
+        pal_playCdTrack(trackNum, musicNum, trackValid);
+        cd_track_valid = trackValid;
+        cd_active = 1;
+        cd_track_num = trackNum;
+      }
     }
     return;
+  } else {
+    play_all_kinds_music(musicNum, trackValid);
+    return;
   }
-  play_all_kinds_music(musicNum, trackValid);
 }
 
 int16_t compact_inventory(void) {
@@ -1897,11 +1918,9 @@ int16_t select_enemy_target(void) {
         multi_event_param_3 = team_number;
       if (multi_event_param_3 > team_number)
         multi_event_param_3 = 0;
-    L_00409EEC:
-      if (enemy_battle_data[multi_event_param_3].hp <= 0) {
+      while (enemy_battle_data[multi_event_param_3].hp <= 0) {
         multi_event_param_3 =
             (uint16_t)(((int32_t)multi_event_param_3 + k + (int32_t)enemy_max_id) % (int32_t)enemy_max_id);
-        goto L_00409EEC;
       }
       if (key_pressed == 1)
         i = -1;
@@ -1944,19 +1963,18 @@ void get_sprites_curr_scene(void) {
 void menu_system(void) {
   int32_t tmp2, result, result2;
   tmp2 = menu_loop(&(int16_t){0}, 40, 60, 11, 4, 5);
-  if (tmp2 == 0) {
+  switch (tmp2) {
+  case 0:
     result = check_save_file();
     if (result >= 0)
       SaveRPG_internal(result + 1);
     return;
-  }
-  if (tmp2 == 1) {
+  case 1:
     result = check_save_file();
     if (result >= 0)
       LoadRPG_internal(result + 1);
     return;
-  }
-  if (tmp2 == 2) {
+  case 2:
     result = use_cd_flag;
     result2 = yes_no_menu(result, 17);
     if (result2 >= 0) {
@@ -1964,22 +1982,23 @@ void menu_system(void) {
       if (use_cd_flag == 0) {
         cd_stop();
         midi_close();
-        return;
+      } else {
+        play_all_kinds_music(music_track_arg, music_mode_arg);
       }
-      play_all_kinds_music(music_track_arg, music_mode_arg);
     }
     return;
-  }
-  if (tmp2 == 3) {
+  case 3:
     result = has_sfx;
     result2 = yes_no_menu(result, 17);
     if (result2 >= 0)
       has_sfx = result2;
     return;
-  }
-  if (tmp2 == 4) {
-    if (yes_no_menu(0, 19) == 1)
+  case 4:
+    result = 0;
+    result2 = yes_no_menu(result, 19);
+    if (result2 == 1)
       release_resources_exit();
+    return;
   }
 }
 
@@ -2084,14 +2103,13 @@ void load_npc_sprites(void) {
           PAL_Decompress((uint8_t *)global_buf_2, (uint8_t *)&fire_mkf_data[dup], 64000);
           npc_display_data[i].spritePtrOffset = dup;
           dup += tmp;
-          goto L_0040AA68;
+        } else {
+          npc_display_data[i].spriteNum = 0;
         }
-        npc_display_data[i].spriteNum = 0;
-        goto L_0040AA68;
+      } else {
+        npc_display_data[i].spritePtrOffset = npc_display_data[found].spritePtrOffset;
       }
-      npc_display_data[i].spritePtrOffset = npc_display_data[found].spritePtrOffset;
     }
-  L_0040AA68:
     overlap = 0;
     while (fire_mkf_data[npc_display_data[i].spritePtrOffset + overlap] > 0)
       overlap++;
@@ -2145,7 +2163,9 @@ void use_item_menu(void) {
 
   show_status_icons();
   i = menu_select_party(36, 64, -1);
-  if (i >= 0) {
+  if (i < 0)
+    return;
+  for (;;) {
   L_0040AF7C:
     j = party[i].role;
     itemID = select_theurgy(j, &cursorIdx, 1);
@@ -2166,14 +2186,13 @@ void use_item_menu(void) {
     copy_subfile_data(itemObjID);
     if (redraw_hp_mp_flag)
       playerRoles(j, 10) -= theurgy_data.costMP;
-    if (palette_fade_active == 0) {
-      for (keyResult = 0; keyResult <= RPG_team_number; keyResult++)
-        tmp -= playerRoles(keyResult, 9);
-      if (tmp != 0) {
-        show_status_icons();
-        goto L_0040AF7C;
-      }
-    }
+    if (palette_fade_active != 0)
+      return;
+    for (keyResult = 0; keyResult <= RPG_team_number; keyResult++)
+      tmp -= playerRoles(keyResult, 9);
+    if (tmp == 0)
+      return;
+    show_status_icons();
   }
 }
 
@@ -2509,14 +2528,11 @@ void update_player_battle_status(void) {
       player_battle_sprite[i].direction = 1;
     if (player_status(i, 4)) {
       player_battle_sprite[i].direction = 0;
-      goto L_0040CC0C;
-    }
-    if ((int16_t)playerRoles(roleID, 9) <= 0) {
+    } else if ((int16_t)playerRoles(roleID, 9) <= 0) {
       player_battle_sprite[i].direction = 2;
       if (player_battle_sprite[i].origDirection != 2)
         battle_role_action[i].flag = -1;
     }
-  L_0040CC0C:
     player_battle_sprite[i].origDirection = player_battle_sprite[i].direction;
     if (player_battle_sprite[i].direction <= 1) {
       player_battle_sprite[i].x = player_battle_sprite[i].origX;
@@ -2686,16 +2702,13 @@ int16_t select_direction_menu(uint16_t *direction) {
       if (battle_order_array[i]) {
         PAL_PutP(key_scan_map[i], key_action_map[i], (const uint8_t *)(word_glyph_index + word_glyph_index[40 + i]),
                  (void *)screen_buffer_ptr, 20, 2);
-        goto L_0040DB3E;
-      }
-      if (i == *direction) {
+      } else if (i == *direction) {
         PAL_PutP(key_scan_map[i], key_action_map[i], (const uint8_t *)(word_glyph_index + word_glyph_index[40 + i]),
                  (void *)screen_buffer_ptr, 0, 0);
-        goto L_0040DB3E;
+      } else {
+        PAL_PutP(key_scan_map[i], key_action_map[i], (const uint8_t *)(word_glyph_index + word_glyph_index[40 + i]),
+                 (void *)screen_buffer_ptr, 4, 2);
       }
-      PAL_PutP(key_scan_map[i], key_action_map[i], (const uint8_t *)(word_glyph_index + word_glyph_index[40 + i]),
-               (void *)screen_buffer_ptr, 4, 2);
-    L_0040DB3E:;
     }
     draw_battle_scene(1, 0);
   }
@@ -2740,58 +2753,61 @@ int16_t select_battle_action(int16_t menuType) {
   int16_t actionResult = 1;
   int16_t cursorStart;
 
-L_0040DE2A:
-  if (menuType == 0)
-    cursorStart = 1;
-  else
-    cursorStart = 4;
-  result = select_item_with_filter(&magic_select_tmp, -1, cursorStart);
-  draw_battle_status_bar();
-  if (result >= 0) {
+  for (;;) {
+    if (menuType == 0)
+      cursorStart = 1;
+    else
+      cursorStart = 4;
+    result = select_item_with_filter(&magic_select_tmp, -1, cursorStart);
+    draw_battle_status_bar();
+    if (result < 0) {
+      actionResult = -2;
+    L_0040E088:
+      return actionResult;
+    }
     tmp = 0;
     tmp5 = menuType;
-    if (tmp5 == 0) {
+    switch (tmp5) {
+    case 0:
       PAL_GetBin((uint16_t *)&tmp2, objects[result].data[6], 4);
       if (tmp2 == 0) {
         tmp3 = select_battle_target();
         if (tmp3 < 0) {
           tmp = -2;
-          goto L_0040E00C;
+        } else {
+          battle_role_action[battle_curr_role_idx].actionType = 3;
+          battle_role_action[battle_curr_role_idx].target = tmp3;
         }
+      } else {
         battle_role_action[battle_curr_role_idx].actionType = 3;
-        battle_role_action[battle_curr_role_idx].target = tmp3;
-        goto L_0040E00C;
+        battle_role_action[battle_curr_role_idx].target = -1;
       }
-      battle_role_action[battle_curr_role_idx].actionType = 3;
-      battle_role_action[battle_curr_role_idx].target = -1;
-      goto L_0040E00C;
-    }
-    if (tmp5 == 1) {
+      break;
+    case 1:
       PAL_GetBin((uint16_t *)&tmp2, objects[result].data[6], 4);
       if (tmp2 == 0) {
         tmp4 = select_enemy_target();
         if (tmp4 < 0) {
           tmp = -2;
-          goto L_0040E00C;
+        } else {
+          battle_role_action[battle_curr_role_idx].actionType = 4;
+          battle_role_action[battle_curr_role_idx].target = tmp4;
         }
+      } else {
         battle_role_action[battle_curr_role_idx].actionType = 4;
-        battle_role_action[battle_curr_role_idx].target = tmp4;
-        goto L_0040E00C;
+        battle_role_action[battle_curr_role_idx].target = battle_curr_role_idx;
       }
-      battle_role_action[battle_curr_role_idx].actionType = 4;
-      battle_role_action[battle_curr_role_idx].target = battle_curr_role_idx;
+      break;
     }
-  L_0040E00C:
-    if (tmp == -2)
-      goto L_0040DE2A;
-    battle_role_action[battle_curr_role_idx].itemID = result;
-    battle_role_action[battle_curr_role_idx].invIndex = magic_select_tmp;
-    inventory[magic_select_tmp].amountInUse++;
-  } else {
-    actionResult = -2;
+    if (tmp != -2) {
+      battle_role_action[battle_curr_role_idx].itemID = result;
+      battle_role_action[battle_curr_role_idx].invIndex = magic_select_tmp;
+      inventory[magic_select_tmp].amountInUse++;
+      goto L_0040E088;
+    }
   }
-  return actionResult;
 }
+
 
 void increase_player_attr(int16_t roleID, int16_t attrType, int16_t amount) {
   int16_t attrName;
@@ -3096,10 +3112,10 @@ void timer_midi_cd_callback(void) {
       }
     }
     return;
-  }
-  if (exit_flag == 0)
+  } else if (exit_flag == 0) {
     stop_all_and_exit();
-  else if (exit_flag == 1) {
+    return;
+  } else if (exit_flag == 1) {
     // NOTE: remake 增补(51ca403 兜底),golden 无此分支——p-code 0040F522
     // 处仅 exit_flag=0→stop_all_and_exit,窗口失活且 exit_flag=1 时什么都不做。
     // VB 由宿主 End 语句承担终止;remake 需显式清理。仅在 stop_all_and_exit
@@ -3236,28 +3252,27 @@ void render_dialog_control(int16_t x, int16_t y) {
       image_lookup_key = 2;
       continue;
     default:
-      break;
+      if (image_offset_table[j] > 128) {
+        dialogBuf[0] = image_offset_table[j];
+        dialogBuf[1] = image_offset_table[j + 1];
+        dialogBuf[2] = 0;
+        j += 1;
+        i_16 = 16;
+      } else {
+        dialogBuf[0] = image_offset_table[j];
+        dialogBuf[1] = 0;
+        i_16 = 8;
+      }
+      PAL_DrawString((const char *)dialogBuf, (int16_t)image_draw_x, (int16_t)image_draw_y, 0, (uint8_t)dialog_x,
+                     (void *)screen_buffer_ptr);
+      if (image_draw_flag == 0)
+        PAL_WaitTime(music_mode_init);
+      image_draw_x += i_16;
+      tmp2 = check_key_pressed();
+      if (tmp2 == 2)
+        image_draw_flag = -1;
+      continue;
     }
-    if (image_offset_table[j] > 128) {
-      dialogBuf[0] = image_offset_table[j];
-      dialogBuf[1] = image_offset_table[j + 1];
-      dialogBuf[2] = 0;
-      j += 1;
-      i_16 = 16;
-    } else {
-      dialogBuf[0] = image_offset_table[j];
-      dialogBuf[1] = 0;
-      dialogBuf[2] = 0;
-      i_16 = 8;
-    }
-    PAL_DrawString((const char *)dialogBuf, (int16_t)image_draw_x, (int16_t)image_draw_y, 0, (uint8_t)dialog_x,
-                   (void *)screen_buffer_ptr);
-    if (image_draw_flag == 0)
-      PAL_WaitTime(music_mode_init);
-    image_draw_x += i_16;
-    tmp2 = check_key_pressed();
-    if (tmp2 == 2)
-      image_draw_flag = -1;
   }
 }
 
@@ -3267,6 +3282,7 @@ void process_AutoScript(int16_t npcIdx, uint16_t *scriptEntry) {
   int16_t opcode, operand1, operand2, operand3;
   double rng;
 
+L_0040FF88:
   for (;;) {
     tmp = 0;
     PAL_CvLong(*scriptEntry, &tmp);
@@ -3283,52 +3299,68 @@ void process_AutoScript(int16_t npcIdx, uint16_t *scriptEntry) {
     if (op == 2) {
       if (operand2 == 0) {
         *scriptEntry = operand1;
-        return;
-      }
-      npc_display_data[npcIdx].scriptIdleFrameAuto++;
-      if (npc_display_data[npcIdx].scriptIdleFrameAuto < operand2) {
-        *scriptEntry = operand1;
-        return;
-      }
-      npc_display_data[npcIdx].scriptIdleFrameAuto = 0;
-    } else if (op == 3) {
-      if (operand2 == 0) {
-        *scriptEntry = operand1;
-        continue;
-      }
-      npc_display_data[npcIdx].scriptIdleFrameAuto++;
-      if (npc_display_data[npcIdx].scriptIdleFrameAuto < operand2) {
-        *scriptEntry = operand1;
-        continue;
-      }
-      npc_display_data[npcIdx].scriptIdleFrameAuto = 0;
-    } else if (op == 4) {
-      if (operand2 > 0) {
-        tmp = operand2 - scenes[RPG_curr_scene].eventObjectIndex;
-        if (tmp > 0 && tmp <= curr_scene_event_count)
-          process_Script((int16_t)tmp, (uint16_t *)&operand1);
       } else {
-        process_Script(npcIdx, (uint16_t *)&operand1);
-      }
-    } else if (op == 6) {
-      rng = VB_rtcRandomNext();
-      if ((float)operand1 < (float)(rng * 100.0)) {
-        if (operand2 != 0) {
-          *scriptEntry = operand2;
-          continue;
+        npc_display_data[npcIdx].scriptIdleFrameAuto++;
+        if (npc_display_data[npcIdx].scriptIdleFrameAuto < operand2) {
+          *scriptEntry = operand1;
+        } else {
+          npc_display_data[npcIdx].scriptIdleFrameAuto = 0;
+          goto L_004102CE;
         }
         return;
       }
-    } else if (op == 9) {
-      npc_display_data[npcIdx].scriptIdleFrameAuto++;
-      if (npc_display_data[npcIdx].scriptIdleFrameAuto < operand1)
-        return;
-      npc_display_data[npcIdx].scriptIdleFrameAuto = 0;
-    } else if (op > 10) {
-      process_scripts(npcIdx, scriptEntry, opcode, &operand1, &operand2, &operand3);
+      return;
     }
-    *scriptEntry = increment_script_ip(*scriptEntry);
-    return;
+
+    switch (op) {
+    case 3:
+      if (operand2 == 0) {
+        *scriptEntry = operand1;
+        goto L_0040FF88;
+      } else {
+        npc_display_data[npcIdx].scriptIdleFrameAuto++;
+        if (npc_display_data[npcIdx].scriptIdleFrameAuto >= operand2) {
+          npc_display_data[npcIdx].scriptIdleFrameAuto = 0;
+          goto L_004102CE;
+        }
+        *scriptEntry = operand1;
+        goto L_0040FF88;
+      }
+    case 4:
+      if (operand2 <= 0) {
+        process_Script(npcIdx, (uint16_t *)&operand1);
+        goto L_004102CE;
+      } else {
+        tmp = operand2 - scenes[RPG_curr_scene].eventObjectIndex;
+        if (!((tmp > 0) && (tmp <= curr_scene_event_count))) {
+          goto L_004102CE;
+        } else {
+          process_Script((int16_t)tmp, (uint16_t *)&operand1);
+          goto L_004102CE;
+        }
+      }
+    case 6:
+      rng = VB_rtcRandomNext();
+      if ((float)operand1 >= (float)(rng * 100.0))
+        goto L_004102CE;
+      if (operand2 == 0)
+        return;
+      break;
+    case 9:
+      npc_display_data[npcIdx].scriptIdleFrameAuto++;
+      if (npc_display_data[npcIdx].scriptIdleFrameAuto >= operand1) {
+        npc_display_data[npcIdx].scriptIdleFrameAuto = 0;
+        goto L_004102CE;
+      }
+      return;
+    default:
+      if (op > 10)
+        process_scripts(npcIdx, scriptEntry, opcode, &operand1, &operand2, &operand3);
+    L_004102CE:
+      *scriptEntry = increment_script_ip(*scriptEntry);
+      return;
+    }
+    *scriptEntry = operand2;
   }
 }
 
@@ -3387,7 +3419,8 @@ void LoadRPG_internal(int16_t saveSlot) {
   snprintf(filename, sizeof(filename), "%d.RPG", saveSlot);
   rpg_to_load = saveSlot;
   handle = open_file(filename, 0);
-  if (handle == 0)
+  // NOTE: pal_lopen 失败返回 -1；原 ==0 判空漏接负句柄，缺失存档会以零缓存继续装档
+  if (handle <= 0)
     return;
 
   save_temp_buf[0] = 0;
@@ -3477,8 +3510,10 @@ void enemy_attack_enemy(int16_t attackerIdx, int16_t targetIdx) {
   if (enemy_battle_data[targetIdx].hp > 0) {
     enemy_battle_data[targetIdx].x = enemy_battle_data[targetIdx].origX;
     enemy_battle_data[targetIdx].y = enemy_battle_data[targetIdx].origY;
+    return;
   } else {
     npc_sprite_num = -1;
+    return;
   }
 }
 
@@ -3612,17 +3647,15 @@ void calc_display_exp(int16_t exp) {
           expSlots[0][k].exp += exp;
         }
         PAL_CopyMem(battle_order_array, data_levelup_exp, 200);
-        for (;;) {
-          if (expSlots[j][k].exp < battle_order_array[expSlots[j][k].level])
-            break;
+        while (expSlots[j][k].exp >= battle_order_array[expSlots[j][k].level]) {
           expSlots[j][k].exp -= battle_order_array[expSlots[j][k].level];
           expSlots[j][k].level++;
           if (expSlots[j][k].level > 99) {
             expSlots[j][k].level = 99;
             continue;
-          }
-          if (j == 0) {
+          } else if (j == 0) {
             show_equip_detail(k, 1);
+            continue;
           } else {
             rng = VB_rtcRandomNext();
             increase_player_attr(k, j, vb_round_banker_i16_d(1.0 + rng));
@@ -3706,29 +3739,28 @@ void draw_enemy_battle_frame(void) {
     drawY = npc_direction - mgo_frame_offsets[spriteIdx + 1];
     PAL_PutP(drawX, drawY, (const uint8_t *)(mgo_frame_offsets + spriteIdx), (void *)tmp, 0, 0);
     return;
-  }
-  if (battle_select_max != 0)
-    return;
-
-  for (j = 0; j <= enemy_pos_count; j++) {
-    save_temp_buf[j + 10] = player_battle_sprite[j].y;
-    save_temp_buf[j] = j;
-  }
-  for (j = 0; j < enemy_pos_count; j++) {
-    for (k = j + 1; k <= enemy_pos_count; k++) {
-      if (save_temp_buf[j + 10] > save_temp_buf[k + 10]) {
-        swap_values((int16_t *)&save_temp_buf[j], (int16_t *)&save_temp_buf[k]);
-        swap_values((int16_t *)&save_temp_buf[j + 10], (int16_t *)&save_temp_buf[k + 10]);
+  } else if (battle_select_max == 0) {
+    for (j = 0; j <= enemy_pos_count; j++) {
+      save_temp_buf[j + 10] = player_battle_sprite[j].y;
+      save_temp_buf[j] = j;
+    }
+    for (j = 0; j < enemy_pos_count; j++) {
+      for (k = j + 1; k <= enemy_pos_count; k++) {
+        if (save_temp_buf[j + 10] > save_temp_buf[k + 10]) {
+          swap_values((int16_t *)&save_temp_buf[j], (int16_t *)&save_temp_buf[k]);
+          swap_values((int16_t *)&save_temp_buf[j + 10], (int16_t *)&save_temp_buf[k + 10]);
+        }
       }
     }
-  }
-  for (j = 0; j <= enemy_pos_count; j++) {
-    i = save_temp_buf[j];
-    spriteIdx = mgo_frame_offsets[player_battle_sprite[i].spriteBase + player_battle_sprite[i].direction] +
-                player_battle_sprite[i].spriteBase;
-    drawX = player_battle_sprite[i].x - (mgo_frame_offsets[spriteIdx] / 2);
-    drawY = player_battle_sprite[i].y - mgo_frame_offsets[spriteIdx + 1];
-    PAL_PutP(drawX, drawY, (const uint8_t *)(mgo_frame_offsets + spriteIdx), (void *)tmp, 0, 0);
+    for (j = 0; j <= enemy_pos_count; j++) {
+      i = save_temp_buf[j];
+      spriteIdx = mgo_frame_offsets[player_battle_sprite[i].spriteBase + player_battle_sprite[i].direction] +
+                  player_battle_sprite[i].spriteBase;
+      drawX = player_battle_sprite[i].x - (mgo_frame_offsets[spriteIdx] / 2);
+      drawY = player_battle_sprite[i].y - mgo_frame_offsets[spriteIdx + 1];
+      PAL_PutP(drawX, drawY, (const uint8_t *)(mgo_frame_offsets + spriteIdx), (void *)tmp, 0, 0);
+    }
+    return;
   }
 }
 
@@ -3917,6 +3949,7 @@ void show_item_description(int16_t *roleIdx, int16_t labelIdx, int16_t rowTop, i
            0);
   PAL_CopyMem(bg_buf, global_buf_1, 64000);
 
+L_004135B4:
   for (;;) {
     PAL_CopyMem(global_buf_1, bg_buf, 64000);
     show_role_attributes(labelIdx + 84, rowTop + 12, party[*roleIdx].role, -1);
@@ -3939,44 +3972,41 @@ void show_item_description(int16_t *roleIdx, int16_t labelIdx, int16_t rowTop, i
     PAL_PopScreen(global_buf_1);
     if (amount <= 0) {
       wait_frame(150);
-      goto L_done;
+      goto L_00413902;
     }
 
     cursorPos = read_key();
-    if (cursorPos == 3) {
+    switch (cursorPos) {
+    case 3:
       *roleIdx -= 1;
       if (*roleIdx < 0)
         *roleIdx = (int16_t)RPG_team_number;
-      continue;
-    }
-    if (cursorPos == 4) {
+      goto L_004135B4;
+    case 4:
       *roleIdx += 1;
       if (*roleIdx > (int16_t)RPG_team_number)
         *roleIdx = 0;
-      continue;
-    }
-    if (cursorPos > 4)
-      continue;
-    if (cursorPos == 2) {
+      goto L_004135B4;
+    case 2:
       process_Script(*roleIdx, &objects[itemID].data[2]);
       if (redraw_hp_mp_flag) {
         PAL_GetBin((uint16_t *)&descIdx, objects[itemID].data[6], 3);
         if (descIdx)
           remove_inventory_item(itemID, 1);
       }
-      continue;
-    }
-    if (cursorPos == 1) {
+      break;
+    case 1:
       PAL_PopScreen((uint8_t *)(global_buf_1 + 64000));
       *roleIdx = -1;
-      goto L_done;
+    L_00413902:
+      screen_buffer_ptr = 0;
+      return;
+    default:
+      if (cursorPos > 4)
+        goto L_004135B4;
+      goto L_00413902;
     }
   }
-L_done:
-  screen_buffer_ptr = 0;
-  (void)i;
-  (void)colX;
-  (void)colorNum;
 }
 
 void process_event_objects(int16_t checkTrigger) {
@@ -4063,7 +4093,7 @@ void Load_system_files(void) {
   int32_t fileSize;
   int32_t i;
 
-  fh = open_file("SSS.MKF", 0);
+  fh = open_file_required("SSS.MKF");
   if (fh > 0) {
     PAL_ReadFile(fh, file_offset_table, 24);
     read_mkf_subfile(fh, 0, events);
@@ -4078,7 +4108,7 @@ void Load_system_files(void) {
     PAL_CloseFile(fh);
   }
 
-  fh = open_file("DATA.MKF", 0);
+  fh = open_file_required("DATA.MKF");
   if (fh > 0) {
     PAL_ReadFile(fh, file_offset_table, 64);
     read_mkf_subfile(fh, 0, (uint8_t *)global_buf_1);
@@ -4105,7 +4135,7 @@ void Load_system_files(void) {
     PAL_CloseFile(fh);
   }
 
-  fh = open_file("BALL.MKF", 0);
+  fh = open_file_required("BALL.MKF");
   if (fh > 0) {
     fileSize = PAL_GetFileSize(fh);
     PAL_ReadFile(fh, ball_mkf_data, fileSize);
@@ -4216,20 +4246,25 @@ void update_viewport_scroll(void) {
     scrollDirX = 1;
     if (RPG_viewport_x > viewport_x_bak) {
       srcX = viewport_x_bak + 320;
-      if (relative_viewport_x == 0) {
+      switch (relative_viewport_x) {
+      case 0:
         srcTileX1 = viewport_scroll_x;
         srcTileX2 = 319;
-      } else if (relative_viewport_x > viewport_scroll_x) {
-        srcTileX1 = viewport_scroll_x;
-        srcTileX2 = relative_viewport_x - 1;
-      } else {
-        scrollDirX = 2;
-        srcTileX1 = viewport_scroll_x;
-        srcTileX2 = 319;
-        srcX = viewport_x_bak + 320;
-        srcTileX1b = 0;
-        srcTileX2b = relative_viewport_x - 1;
-        tmp3 = srcX + (320 - srcTileX1);
+        break;
+      default:
+        if (relative_viewport_x > viewport_scroll_x) {
+          srcTileX1 = viewport_scroll_x;
+          srcTileX2 = relative_viewport_x - 1;
+        } else {
+          scrollDirX = 2;
+          srcTileX1 = viewport_scroll_x;
+          srcTileX2 = 319;
+          srcX = viewport_x_bak + 320;
+          srcTileX1b = 0;
+          srcTileX2b = relative_viewport_x - 1;
+          tmp3 = srcX + (320 - srcTileX1);
+        }
+        break;
       }
     } else {
       srcX = RPG_viewport_x;
@@ -4254,20 +4289,25 @@ void update_viewport_scroll(void) {
     scrollDirY = 1;
     if (RPG_viewport_y > viewport_y_bak) {
       srcY = viewport_y_bak + 200;
-      if (relative_viewport_y == 0) {
+      switch (relative_viewport_y) {
+      case 0:
         srcTileY1 = viewport_scroll_y;
         srcTileY2 = 199;
-      } else if (relative_viewport_y > viewport_scroll_y) {
-        srcTileY1 = viewport_scroll_y;
-        srcTileY2 = relative_viewport_y - 1;
-      } else {
-        scrollDirY = 2;
-        srcTileY1 = viewport_scroll_y;
-        srcTileY2 = 199;
-        srcY = viewport_y_bak + 200;
-        srcTileY1b = 0;
-        srcTileY2b = relative_viewport_y - 1;
-        tmp = srcY + (200 - srcTileY1);
+        break;
+      default:
+        if (relative_viewport_y > viewport_scroll_y) {
+          srcTileY1 = viewport_scroll_y;
+          srcTileY2 = relative_viewport_y - 1;
+        } else {
+          scrollDirY = 2;
+          srcTileY1 = viewport_scroll_y;
+          srcTileY2 = 199;
+          srcY = viewport_y_bak + 200;
+          srcTileY1b = 0;
+          srcTileY2b = relative_viewport_y - 1;
+          tmp = srcY + (200 - srcTileY1);
+        }
+        break;
       }
     } else {
       srcY = RPG_viewport_y;
@@ -4355,9 +4395,10 @@ void enemy_attack_role(int16_t enemyIdx, int16_t targetRole, int16_t itemID) {
       if (player_battle_sprite[j].origDirection == 0 && playerRoles(itemObj, 9) > 0) {
         if (playerRoles(itemObj, 9) < 50 && playerRoles(itemObj, 9) <= playerRoles(itemObj, 7) / 5)
           play_sound(playerRoles(itemObj, 74), 1);
-        if (playerRoles(itemObj, 9) < 10 && vb_round_banker_u16(VB_rtcRandomNext()) &&
-            playerRoles(playerRoles(itemObj, 31), 9) > 0)
-          targetFound = (int16_t)j;
+        if (playerRoles(itemObj, 9) < 10) {
+          if (vb_round_banker_u16(VB_rtcRandomNext()) && playerRoles(playerRoles(itemObj, 31), 9) > 0)
+            targetFound = (int16_t)j;
+        }
       }
     }
     update_player_battle_status();
@@ -4380,21 +4421,21 @@ void enemy_attack_role(int16_t enemyIdx, int16_t targetRole, int16_t itemID) {
     if (targetSelected >= 0) {
       if (playerRoles(party[targetSelected].role, 9) > 0) {
         process_Script((int16_t)targetSelected, &objects[playerRoles(party[targetSelected].role, 3)].data[2]);
-        goto L_enemy_attack_role_done;
-      }
-      if (targetFound >= 0)
+      } else if (targetFound >= 0) {
         process_Script((int16_t)targetFound, &objects[playerRoles(party[targetFound].role, 3)].data[3]);
-      goto L_enemy_attack_role_done;
-    }
-    if (targetFound >= 0)
+      }
+    } else if (targetFound >= 0) {
       process_Script((int16_t)targetFound, &objects[playerRoles(party[targetFound].role, 3)].data[3]);
+    }
+    goto L_enemy_attack_role_done;
   } else {
     k = random_enemy_id();
     if (k != enemyIdx)
       enemy_attack_enemy(enemyIdx, k);
+  L_enemy_attack_role_done:
+    in_battle_action = 0;
+    return;
   }
-L_enemy_attack_role_done:
-  in_battle_action = 0;
 }
 
 void role_physical_attack(int16_t attackerIdx, int16_t targetIdx, int16_t *targetRole, int16_t isCritical) {
@@ -4495,102 +4536,109 @@ void inventory_use_menu(void) {
   int16_t itemType, invIdx;
   int16_t maxHP;
 
-L_00415B1C:
-  itemObj = select_item_with_filter(&magic_select_tmp, 0, 2);
-  if (itemObj < 0)
-    return;
+  for (;;) {
+    itemObj = select_item_with_filter(&magic_select_tmp, 0, 2);
+    if (itemObj < 0)
+      return;
 
-  load_fbp_subfile(1);
-  screen_buffer_ptr = PAL_ArrayPtr(global_buf_1);
-  PAL_CopyMem(bg_buf, global_buf_1, 64000);
-  j = 0;
+    load_fbp_subfile(1);
+    screen_buffer_ptr = PAL_ArrayPtr(global_buf_1);
+    PAL_CopyMem(bg_buf, global_buf_1, 64000);
+    j = 0;
 
-L_00415BA6:
-  itemType = objects[itemObj].data[6] / 64;
-  for (i = 0; i <= RPG_team_number; i++) {
-    battle_order_array[i] = playerRoles(party[i].role, 3);
-    PAL_GetBin(&battle_order_array[100 + i], itemType, party[i].role);
-  }
-
-L_00415C46:
-  PAL_CopyMem(global_buf_1, bg_buf, 64000);
-  read_ball_mkf_index(objects[itemObj].data[0]);
-  PAL_PutP(16, 15, (const uint8_t *)(global_buf_2 + global_buf_2[0]), (void *)screen_buffer_ptr, 0, 0);
-  draw_text_at(4, 69, itemObj, 13);
-  if (find_inventory_item(itemObj) >= 0) {
-    invIdx = find_inventory_item(itemObj);
-    display_number(72, 72, inventory[invIdx].amount, 2);
-  }
-
-  roleID = party[j].role;
-  rowY = 110;
-  draw_menu_table(3, rowY - 12, 0, 3, RPG_team_number + 1, -1);
-
-  for (i = 0; i <= RPG_team_number; i++) {
-    if (battle_order_array[i + 100]) {
-      colorNum = (j == i) ? 250 : 78;
-    } else {
-      colorNum = (j == i) ? 28 : 24;
-    }
-    draw_text_at(16, 110 + i * 18, playerRoles(party[i].role, 3), colorNum);
-  }
-
-  rowY = 11;
-  for (equipSlot = 11; equipSlot <= 16; equipSlot++) {
-    draw_text_at(132, rowY, playerRoles(roleID, equipSlot), 78);
-    rowY += 22;
-  }
-  rowY = 16;
-  for (equipSlot = 17; equipSlot <= 21; equipSlot++) {
-    currEquip = playerRoles(roleID, equipSlot);
-    for (k = 11; k <= 16; k++)
-      currEquip += equipment_effect(roleID, k, equipSlot);
-    display_number(278, rowY, currEquip, 0);
-    rowY += 22;
-  }
-
-  PAL_PopScreen(global_buf_1);
-  k = read_key();
-  if (itemObj > 0) {
-    m = k;
-    if (m == 3) {
-      if (j > 0)
-        j--;
-      else
-        j = RPG_team_number;
-      goto L_00415C46;
-    }
-    if (m == 4) {
-      if (j < RPG_team_number)
-        j++;
-      else
-        j = 0;
-      goto L_00415C46;
-    }
-    if (m == 2) {
-      if (battle_order_array[j + 100]) {
-        // NOTE: 有意偏离 golden：原版用未初始化局部（恒 0），作用对象恒为角色 0；
-        // remake 按明显意图取 roleID（存/恢复列 65 = 防物品脚本改战斗形象）。
-        maxHP = playerRoles(roleID, 65);
-        process_Script(j, &objects[itemObj].data[3]);
-        playerRoles(roleID, 65) = maxHP;
-        remove_inventory_item(itemObj, 1);
-        add_inventory_item(coop_magic_tmp, 1);
-        itemObj = coop_magic_tmp;
-        if (itemObj > 0)
-          goto L_00415BA6;
-        goto L_00415C46;
+  L_00415BA6:
+    for (;;) {
+      itemType = objects[itemObj].data[6] / 64;
+      for (i = 0; i <= RPG_team_number; i++) {
+        battle_order_array[i] = playerRoles(party[i].role, 3);
+        PAL_GetBin(&battle_order_array[100 + i], itemType, party[i].role);
       }
-      goto L_00415C46;
+
+    L_00415C46:
+      for (;;) {
+        PAL_CopyMem(global_buf_1, bg_buf, 64000);
+        read_ball_mkf_index(objects[itemObj].data[0]);
+        PAL_PutP(16, 15, (const uint8_t *)(global_buf_2 + global_buf_2[0]), (void *)screen_buffer_ptr, 0, 0);
+        draw_text_at(4, 69, itemObj, 13);
+        if (find_inventory_item(itemObj) >= 0) {
+          invIdx = find_inventory_item(itemObj);
+          display_number(72, 72, inventory[invIdx].amount, 2);
+        }
+
+        roleID = party[j].role;
+        rowY = 110;
+        draw_menu_table(3, rowY - 12, 0, 3, RPG_team_number + 1, -1);
+
+        for (i = 0; i <= RPG_team_number; i++) {
+          if (battle_order_array[i + 100]) {
+            colorNum = (j == i) ? 250 : 78;
+          } else if (j == i) {
+            colorNum = 28;
+          } else {
+            colorNum = 24;
+          }
+          draw_text_at(16, 110 + i * 18, playerRoles(party[i].role, 3), colorNum);
+        }
+
+        rowY = 11;
+        for (equipSlot = 11; equipSlot <= 16; equipSlot++) {
+          draw_text_at(132, rowY, playerRoles(roleID, equipSlot), 78);
+          rowY += 22;
+        }
+        rowY = 16;
+        for (equipSlot = 17; equipSlot <= 21; equipSlot++) {
+          currEquip = playerRoles(roleID, equipSlot);
+          for (k = 11; k <= 16; k++)
+            currEquip += equipment_effect(roleID, k, equipSlot);
+          display_number(278, rowY, currEquip, 0);
+          rowY += 22;
+        }
+
+        PAL_PopScreen(global_buf_1);
+        k = read_key();
+        if (itemObj <= 0)
+          goto L_004160F6;
+        m = k;
+        switch (m) {
+        case 3:
+          j--;
+          if (j < 0)
+            j = RPG_team_number;
+          goto L_00415C46;
+        case 4:
+          j++;
+          if (j > RPG_team_number)
+            j = 0;
+          goto L_00415C46;
+        case 2:
+          if (battle_order_array[j + 100]) {
+            // NOTE: 有意偏离 golden：原版用未初始化局部（恒 0），作用对象恒为角色 0；
+            // remake 按明显意图取 roleID（存/恢复列 65 = 防物品脚本改战斗形象）。
+            maxHP = playerRoles(roleID, 65);
+            process_Script(j, &objects[itemObj].data[3]);
+            playerRoles(roleID, 65) = maxHP;
+            remove_inventory_item(itemObj, 1);
+            add_inventory_item(coop_magic_tmp, 1);
+            itemObj = coop_magic_tmp;
+            if (itemObj > 0)
+              goto L_00415BA6;
+          }
+          goto L_00415C46;
+        default:
+          if (m > 4)
+            break;
+          goto L_004160E6;
+        }
+      }
     }
-    if (m > 4)
-      goto L_00415C46;
-    if (m == 1)
-      goto L_00415B1C;
+  L_004160E6:
+    if (m != 1)
+      break;
   }
+L_004160F6:
   compact_inventory();
   screen_buffer_ptr = 0;
-  (void)maxHP;
+  return;
 }
 
 void show_role_status(int16_t roleIdx) {
@@ -4764,11 +4812,10 @@ int16_t select_theurgy(int16_t roleID, int16_t *cursorIdx, int16_t filterMask) {
               highlightColor = 250;
             else
               highlightColor = 78;
+          } else if ((tmp3 == *cursorIdx) && (inputResult == -2)) {
+            highlightColor = 28;
           } else {
-            if ((tmp3 == *cursorIdx) && (inputResult == -2))
-              highlightColor = 28;
-            else
-              highlightColor = 24;
+            highlightColor = 24;
           }
           draw_text_at(tmp2, m, playerRoles(roleID, tmp3 + 32), highlightColor);
           if (tmp3 == *cursorIdx)
@@ -4844,10 +4891,11 @@ void process_Script(int16_t eventObjID, uint16_t *scriptEntry) {
   dialog_width = 44;
   dialog_height = 26;
 
+L_004178B2:
   for (;;) {
     PAL_CvLong((uint16_t)(*scriptEntry), &subfileIdx);
     if (subfileIdx > sss_subfile_count || *scriptEntry == 0)
-      goto L_exit;
+      break;
 
     PAL_CopyMem(save_temp_buf, &sss_script_data_2[subfileIdx * 8], 8);
     opcode = save_temp_buf[0];
@@ -4856,7 +4904,8 @@ void process_Script(int16_t eventObjID, uint16_t *scriptEntry) {
     operand3 = save_temp_buf[3];
     tmp2 = opcode;
 
-    if (tmp2 == -1) {
+    switch (tmp2) {
+    case -1:
       if (flag_trigger > 3) {
         show_dialog_image_and_wait();
         flag_trigger = 0;
@@ -4901,13 +4950,16 @@ void process_Script(int16_t eventObjID, uint16_t *scriptEntry) {
           dialogY += dialogTemp;
         }
       }
-    } else if (tmp2 == 0) {
+      break;
+    case 0:
       *scriptEntry = savedEntry;
       continueFlag = -1;
-    } else if (tmp2 == 1) {
+      break;
+    case 1:
       *scriptEntry = increment_script_ip((*scriptEntry));
       continueFlag = -1;
-    } else if (tmp2 == 2) {
+      break;
+    case 2:
       if (operand2 == 0) {
         *scriptEntry = operand1;
         continueFlag = -1;
@@ -4919,18 +4971,22 @@ void process_Script(int16_t eventObjID, uint16_t *scriptEntry) {
         } else
           npc_display_data[eventObjID].scriptIdleFrame = 0;
       }
-    } else if (tmp2 == 3) {
+      break;
+    case 3:
       if (operand2 == 0) {
         *scriptEntry = operand1;
-        continue;
+        goto L_004178B2;
+      } else {
+        npc_display_data[eventObjID].scriptIdleFrame++;
+        if (npc_display_data[eventObjID].scriptIdleFrame < operand2) {
+          *scriptEntry = operand1;
+          goto L_004178B2;
+        } else {
+          npc_display_data[eventObjID].scriptIdleFrame = 0;
+        }
       }
-      npc_display_data[eventObjID].scriptIdleFrame++;
-      if (npc_display_data[eventObjID].scriptIdleFrame < operand2) {
-        *scriptEntry = operand1;
-        continue;
-      }
-      npc_display_data[eventObjID].scriptIdleFrame = 0;
-    } else if (tmp2 == 4) {
+      break;
+    case 4:
       if (operand2 > 0) {
         tmp = operand2 - scenes[RPG_curr_scene].eventObjectIndex;
         if (tmp > 0 && tmp <= curr_scene_event_count)
@@ -4938,7 +4994,8 @@ void process_Script(int16_t eventObjID, uint16_t *scriptEntry) {
       } else {
         process_Script(eventObjID, (uint16_t *)&operand1);
       }
-    } else if (tmp2 == 5) {
+      break;
+    case 5:
       check_trigger_flag();
       if (mutex_can_change_palette == 0) {
         sprite_frame_count = operand1;
@@ -4951,16 +5008,21 @@ void process_Script(int16_t eventObjID, uint16_t *scriptEntry) {
       } else {
         restore_screen();
       }
-    } else if (tmp2 == 6) {
+      break;
+    case 6:
       rng = VB_rtcRandomNext();
       if ((float)operand1 < (float)(rng * 100.0)) {
         if (operand2 != 0) {
           *scriptEntry = operand2;
-          continue;
+          goto L_004178B2;
+        } else {
+          continueFlag = -1;
         }
-        continueFlag = -1;
+      } else {
+        goto L_0041805E;
       }
-    } else if (tmp2 == 7) {
+      break;
+    case 7:
       check_trigger_flag();
       battleResult = process_Battle(operand1, operand3);
       *scriptEntry = increment_script_ip((*scriptEntry));
@@ -4968,10 +5030,11 @@ void process_Script(int16_t eventObjID, uint16_t *scriptEntry) {
         *scriptEntry = operand2;
       if (operand3 != 0 && battleResult == 2)
         *scriptEntry = operand3;
-      continue;
-    } else if (tmp2 == 8) {
+      goto L_004178B2;
+    case 8:
       savedEntry = increment_script_ip((*scriptEntry));
-    } else if (tmp2 == 9) {
+      break;
+    case 9:
       check_trigger_flag();
       if (operand1 == 0)
         operand1 = 1;
@@ -4983,7 +5046,8 @@ void process_Script(int16_t eventObjID, uint16_t *scriptEntry) {
         process_event_objects(operand2);
         check_in_battle(1);
       }
-    } else if (tmp2 == 10) {
+      break;
+    case 10:
       flag_trigger = 0;
       flag_key_updown = 0;
       i = -1;
@@ -4991,22 +5055,21 @@ void process_Script(int16_t eventObjID, uint16_t *scriptEntry) {
         i = yes_no_menu(0, 19);
       if (i == 0) {
         *scriptEntry = operand1;
-        continue;
+        goto L_004178B2;
       }
-    } else if (tmp2 > 10) {
-      check_trigger_flag();
+      break;
+    default:
+      if (tmp2 > 10)
+        check_trigger_flag();
+      break;
     }
 
-    if (!continueFlag) {
-      process_scripts(eventObjID, scriptEntry, opcode, &operand1, &operand2, &operand3);
-      *scriptEntry = increment_script_ip((*scriptEntry));
-      continue;
-    }
-
-    break;
+L_0041805E:
+    if (continueFlag)
+      break;
+    process_scripts(eventObjID, scriptEntry, opcode, &operand1, &operand2, &operand3);
+    *scriptEntry = increment_script_ip((*scriptEntry));
   }
-
-L_exit:
   check_trigger_flag();
 }
 
@@ -5192,8 +5255,7 @@ int16_t select_item_with_filter(int16_t *cursorIdx, int16_t bgMode, int16_t filt
     if (tmp2 < prevRow && tmp3 > k) {
       tmp3 = k;
       tmp2++;
-    }
-    if (tmp3 > colCount)
+    } else if (tmp3 > colCount)
       tmp3 = colCount;
     if (prevScroll < 0)
       prevScroll = 0;
@@ -5221,11 +5283,10 @@ int16_t select_item_with_filter(int16_t *cursorIdx, int16_t bgMode, int16_t filt
             if (o >= colPos)
               tmp5 = 200;
           }
+        } else if ((o == *cursorIdx) && (highlightColor == -2)) {
+          tmp5 = 28;
         } else {
-          if ((o == *cursorIdx) && (highlightColor == -2))
-            tmp5 = 28;
-          else
-            tmp5 = 24;
+          tmp5 = 24;
         }
         if (inventory[o].amount > 0)
           draw_text_at(16 + tmp4 * 100, invIdx, inventory[o].item, tmp5);
@@ -5839,118 +5900,116 @@ int16_t process_Battle(int16_t battleScene, int16_t surpriseFlag) {
       enemy_max_id++;
   }
   team_number = enemy_max_id - 1;
-  if (enemy_max_id == 0)
+  if (enemy_max_id <= 0) {
     goto L_00420C0E;
+  } else {
 
-  load_enemy_sprites();
-  load_battle_sprites();
-  if (battle_extra_param <= 1) {
-    player_battle_sprite[0].x = 240;
-    player_battle_sprite[0].y = 170;
-  }
-  if (battle_extra_param == 2) {
-    player_battle_sprite[0].x = 200;
-    player_battle_sprite[0].y = 176;
-    player_battle_sprite[1].x = 256;
-    player_battle_sprite[1].y = 152;
-  }
-  if (battle_extra_param == 3) {
-    player_battle_sprite[0].x = 180;
-    player_battle_sprite[0].y = 180;
-    player_battle_sprite[1].x = 234;
-    player_battle_sprite[1].y = 170;
-    player_battle_sprite[2].x = 270;
-    player_battle_sprite[2].y = 146;
-  }
-  for (i = 0; i <= enemy_pos_count; i++) {
-    player_battle_sprite[i].origX = player_battle_sprite[i].x;
-    player_battle_sprite[i].origY = player_battle_sprite[i].y;
-  }
-  update_player_battle_status();
-  if (RPG_battle_music_number > 0)
-    play_all_kinds_music(RPG_battle_music_number, 1);
-  PAL_CopyMem(&theurgy_effect_count, data_battlefield + RPG_battle_scene_number * 12, 2);
-  load_fbp_subfile(RPG_battle_scene_number);
-  PAL_CopyMem(bg_buf, global_buf_1, 64000);
-  draw_enemy_battle_frame();
-  for (i = 0; i <= 5; i++) {
-    PAL_PopScreen6(global_buf_1, rng_anim_frames[i]);
-    PAL_WaitTime(6);
-  }
-  fade_out_palette(0);
-  PAL_CopyMem(global_buf_1, bg_buf, 64000);
-  PAL_ClearMenu((uint8_t *)battle_enemy_data_ext, 5);
-
-  for (;;) {
-    PAL_CopyMem((uint8_t *)word_glyph_index, menu_bg_data, menu_bg_size);
-    for (i = 0; i <= team_number; i++) {
-      if (enemy_battle_data[i].hp > 0)
-        process_Script(i, &enemy_battle_data[i].useScript);
+    load_enemy_sprites();
+    load_battle_sprites();
+    if (battle_extra_param <= 1) {
+      player_battle_sprite[0].x = 240;
+      player_battle_sprite[0].y = 170;
     }
-    if (fade_step_count) {
-      battleResult = fade_step_count;
-      goto L_00420C0E;
+    if (battle_extra_param == 2) {
+      player_battle_sprite[0].x = 200;
+      player_battle_sprite[0].y = 176;
+      player_battle_sprite[1].x = 256;
+      player_battle_sprite[1].y = 152;
     }
-    if (check_party_alive() == 0) {
-      battleResult = 1;
-      goto L_00420C0E;
+    if (battle_extra_param == 3) {
+      player_battle_sprite[0].x = 180;
+      player_battle_sprite[0].y = 180;
+      player_battle_sprite[1].x = 234;
+      player_battle_sprite[1].y = 170;
+      player_battle_sprite[2].x = 270;
+      player_battle_sprite[2].y = 146;
     }
-    if (count_alive_enemies() == 0) {
-      battleResult = 3;
-      goto L_00420C0E;
+    for (i = 0; i <= enemy_pos_count; i++) {
+      player_battle_sprite[i].origX = player_battle_sprite[i].x;
+      player_battle_sprite[i].origY = player_battle_sprite[i].y;
     }
-
-    directionParam = 0;
-    actionParam = 0;
-    battle_curr_role_idx = 0;
-    menuResult = 0;
-    for (i = 0; i <= 255; i++)
-      inventory[i].amountInUse = 0;
-    PAL_ClearMenu((uint8_t *)battle_role_action, 40);
-
-    if (auto_battle_flag == 0) {
-      for (i = 0; i <= enemy_pos_count; i++)
-        player_battle_sprite[i].actionState = 0;
-      update_player_battle_status();
-      draw_battle_status_bar();
+    update_player_battle_status();
+    if (RPG_battle_music_number > 0)
+      play_all_kinds_music(RPG_battle_music_number, 1);
+    PAL_CopyMem(&theurgy_effect_count, data_battlefield + RPG_battle_scene_number * 12, 2);
+    load_fbp_subfile(RPG_battle_scene_number);
+    PAL_CopyMem(bg_buf, global_buf_1, 64000);
+    draw_enemy_battle_frame();
+    for (i = 0; i <= 5; i++) {
+      PAL_PopScreen6(global_buf_1, rng_anim_frames[i]);
+      PAL_WaitTime(6);
     }
-
-  L_0041DBEE:
-    attack_done_flag = -1;
-    effect_particle_count = 0;
+    fade_out_palette(0);
+    PAL_CopyMem(global_buf_1, bg_buf, 64000);
+    PAL_ClearMenu((uint8_t *)battle_enemy_data_ext, 5);
 
     for (;;) {
-      if (battle_curr_role_idx > enemy_pos_count)
-        goto L_0041EAC0;
-      if (player_status[battle_curr_role_idx][4]) {
-        battle_role_action[battle_curr_role_idx].target = random_enemy_id();
-        battle_role_action[battle_curr_role_idx].actionType = 0;
-        goto L_0041DD16;
+      PAL_CopyMem((uint8_t *)word_glyph_index, menu_bg_data, menu_bg_size);
+      for (i = 0; i <= team_number; i++) {
+        if (enemy_battle_data[i].hp > 0)
+          process_Script(i, &enemy_battle_data[i].useScript);
       }
-      if ((player_status[battle_curr_role_idx][1] + player_status[battle_curr_role_idx][2] +
-           player_status[battle_curr_role_idx][0]) == 0) {
-        if (playerRoles(party[battle_curr_role_idx].role, 9) > 0)
-          goto L_0041DD2A;
-        goto L_0041DD16;
+      if (fade_step_count) {
+        battleResult = fade_step_count;
+        goto L_00420C0E;
       }
-      draw_battle_scene(4, 0);
-    L_0041DD16:
-      battle_curr_role_idx++;
-    }
-  L_0041DD2A:
-    for (i = battle_curr_role_idx; i <= enemy_pos_count; i++) {
-      if (battle_role_action[i].actionType == 3 || battle_role_action[i].actionType == 4) {
-        if (inventory[battle_role_action[i].invIndex].amountInUse > 0)
-          inventory[battle_role_action[i].invIndex].amountInUse--;
-        battle_role_action[i].actionType = 0;
+      if (check_party_alive() == 0) {
+        battleResult = 1;
+        goto L_00420C0E;
       }
-    }
+      if (count_alive_enemies() == 0) {
+        battleResult = 3;
+        goto L_00420C0E;
+      }
 
-    if (auto_battle_flag == 0) {
+      directionParam = 0;
+      actionParam = 0;
+      battle_curr_role_idx = 0;
+      menuResult = 0;
+      for (i = 0; i <= 255; i++)
+        inventory[i].amountInUse = 0;
+      PAL_ClearMenu((uint8_t *)battle_role_action, 40);
+
+      if (auto_battle_flag == 0) {
+        for (i = 0; i <= enemy_pos_count; i++)
+          player_battle_sprite[i].actionState = 0;
+        update_player_battle_status();
+        draw_battle_status_bar();
+      }
+
+    L_0041DBEE:
+    for (;;) {
+      attack_done_flag = -1;
+      effect_particle_count = 0;
+
+      for (;;) {
+        if (battle_curr_role_idx > enemy_pos_count)
+          goto L_0041EAC0;
+        if (player_status[battle_curr_role_idx][4]) {
+          battle_role_action[battle_curr_role_idx].target = random_enemy_id();
+          battle_role_action[battle_curr_role_idx].actionType = 0;
+        } else if ((player_status[battle_curr_role_idx][1] + player_status[battle_curr_role_idx][2] +
+                    player_status[battle_curr_role_idx][0]) == 0) {
+          if (playerRoles(party[battle_curr_role_idx].role, 9) > 0)
+            break;
+        } else {
+          draw_battle_scene(4, 0);
+        }
+        battle_curr_role_idx++;
+      }
+      for (i = battle_curr_role_idx; i <= enemy_pos_count; i++) {
+        if (battle_role_action[i].actionType == 3 || battle_role_action[i].actionType == 4) {
+          if (inventory[battle_role_action[i].invIndex].amountInUse > 0)
+            inventory[battle_role_action[i].invIndex].amountInUse--;
+          battle_role_action[i].actionType = 0;
+        }
+      }
+
+      if (auto_battle_flag != 0)
+        break;
       battle_target_cursor = -1;
       multi_event_param_3 = -1;
-      theurgyResult2 = 0;
-      do {
+      for (;;) {
         battle_role_idx_2 = (uint16_t)-1;
         PAL_ClearMenu((uint8_t *)battle_order_array, 4);
         if (enemy_pos_count == 0 || player_battle_sprite[battle_curr_role_idx].direction != 0)
@@ -5959,133 +6018,8 @@ int16_t process_Battle(int16_t battleScene, int16_t surpriseFlag) {
           battle_order_array[1] = (uint16_t)-1;
         dirResult = select_direction_menu((uint16_t *)&directionParam);
 
-        if (dirResult > -9) {
-          if (dirResult == -1) {
-            prevRoleIdx = battle_curr_role_idx;
-            for (i = 0; i < battle_curr_role_idx; i++) {
-              if (check_player_alive(i) > 0)
-                prevRoleIdx = i;
-            }
-            battle_curr_role_idx = prevRoleIdx;
-            goto L_0041DBEE;
-          }
-          tmp2 = dirResult;
-          if (tmp2 == 0) {
-            if (playerRoles(party[battle_curr_role_idx].role, 4)) {
-              battle_role_action[battle_curr_role_idx].actionType = 10;
-              check_battle_action(&directionParam, &actionParam);
-              goto L_0041E404;
-            }
-            enemyTarget = select_enemy_target();
-            if (enemyTarget >= 0) {
-              battle_role_action[battle_curr_role_idx].target = enemyTarget;
-              battle_role_action[battle_curr_role_idx].actionType = 0;
-              check_battle_action(&directionParam, &actionParam);
-            }
-            goto L_0041E404;
-          }
-          if (tmp2 == 1) {
-          L_0041DFF8:
-            if (player_status[battle_curr_role_idx][3])
-              theurgyType = 0;
-            else
-              theurgyType = 2;
-            theurgyResult3 = select_theurgy(party[battle_curr_role_idx].role, &actionParam, theurgyType);
-            draw_battle_status_bar();
-            if (theurgyResult3 >= 0) {
-              PAL_GetBin((uint16_t *)&prevRoleIdx, objects[theurgyResult3].data[6], 3);
-              PAL_GetBin((uint16_t *)&isTargeted, objects[theurgyResult3].data[6], 4);
-              battle_role_action[battle_curr_role_idx].itemID = theurgyResult3;
-              battle_role_action[battle_curr_role_idx].invIndex = actionParam;
-              if (prevRoleIdx) {
-                if (isTargeted) {
-                  battle_role_action[battle_curr_role_idx].target = battle_curr_role_idx;
-                  goto L_0041E134;
-                }
-                enemyTarget = select_enemy_target();
-                if (enemyTarget >= 0) {
-                  battle_role_action[battle_curr_role_idx].target = enemyTarget;
-                  goto L_0041E134;
-                }
-                goto L_0041DFF8;
-              L_0041E134:
-                battle_role_action[battle_curr_role_idx].actionType = 2;
-              } else {
-                if (isTargeted) {
-                  battle_role_action[battle_curr_role_idx].target = battle_curr_role_idx;
-                  goto L_0041E1AA;
-                }
-                theurgyResult4 = select_battle_target();
-                if (theurgyResult4 >= 0) {
-                  battle_role_action[battle_curr_role_idx].target = theurgyResult4;
-                  goto L_0041E1AA;
-                }
-                goto L_0041DFF8;
-              L_0041E1AA:
-                battle_role_action[battle_curr_role_idx].actionType = 1;
-              }
-              check_battle_action(&directionParam, &actionParam);
-            }
-            goto L_0041E404;
-          }
-          if (tmp2 == 2) {
-            PAL_GetBin((uint16_t *)&isTargeted, objects[player_battle_sprite[battle_curr_role_idx].equipID].data[6], 4);
-            if (isTargeted == 0) {
-              enemyTarget = select_enemy_target();
-            } else
-              enemyTarget = 0;
-            if (enemyTarget >= 0) {
-              for (i = 0; i <= enemy_pos_count; i++)
-                battle_role_action[i].actionType = -1;
-              battle_role_action[battle_curr_role_idx].actionType = 7;
-              battle_role_action[battle_curr_role_idx].target = enemyTarget;
-              battle_curr_role_idx = enemy_pos_count;
-              check_battle_action(&directionParam, &actionParam);
-            }
-            goto L_0041E404;
-          }
-          if (tmp2 == 3) {
-            do {
-              theurgyResult2 = menu_loop(&menuParam1, 4, 16, 56, 3, 5);
-              if (theurgyResult2 < 0) {
-                draw_battle_status_bar();
-                goto L_0041E404;
-              }
-              tmp3 = theurgyResult2;
-              if (tmp3 == 0) {
-                theurgyResult7 = set_auto_battle_targets();
-                goto L_0041E3D2;
-              }
-              if (tmp3 == 1) {
-                theurgyResult = menu_loop(&menuParam2, 24, 50, 23, 2, 2);
-                if (theurgyResult < 0) {
-                  theurgyResult2 = -2;
-                  goto L_0041E3D2;
-                }
-                theurgyResult2 = select_battle_action(theurgyResult);
-                goto L_0041E3D2;
-              }
-              if (tmp3 == 2) {
-                battle_set_action_code();
-                goto L_0041E3D2;
-              }
-              if (tmp3 == 3) {
-                battle_set_action_walk();
-                goto L_0041E3D2;
-              }
-              if (tmp3 == 4)
-                entry_stub_show_text_and_dialog();
-            L_0041E3D2:;
-            } while (theurgyResult2 == -2);
-            if (theurgyResult2 != 4) {
-              check_battle_action(&directionParam, &actionParam);
-              draw_battle_status_bar();
-            }
-          }
-        L_0041E404:
-          battle_role_idx_2 = 0;
-          goto L_0041EAAA;
-        }
+        if (dirResult > -9)
+          goto L_0041DECC;
         if (dirResult == -9) {
           menuResult = -1;
           for (i = battle_curr_role_idx; i <= enemy_pos_count; i++) {
@@ -6179,493 +6113,614 @@ int16_t process_Battle(int16_t battleScene, int16_t surpriseFlag) {
           }
           battle_curr_role_idx = enemy_pos_count;
         }
-      } while (theurgyResult2 == -2);
+        if (theurgyResult2 != -2)
+          break;
+      }
       check_battle_action(&directionParam, &actionParam);
       draw_battle_status_bar();
-    L_0041EAAA:
-      if (battle_curr_role_idx < battle_extra_param)
-        goto L_0041DBEE;
-    }
-
-  L_0041EAC0:
-    dialog_y_pos = 200;
-    draw_battle_scene(1, 0);
-
-    battle_action_queue = -1;
-    for (battle_enemy_idx = 0; battle_enemy_idx <= team_number; battle_enemy_idx++) {
-      float prod = VB_rtcRandomNext() * (float)enemy_runtime_data[battle_enemy_idx].dualMove;
-      rng = (prod > 0) ? 1 : ((prod < 0) ? -1 : 0);
-      rng2 = VB_rtcRandomNext();
-      prevRoleIdx = vb_round_banker_i16_d(
-          (double)(calc_level_bonus(battle_enemy_idx, 3) + enemy_runtime_data[battle_enemy_idx].dexterity) *
-          (0.9 + ((double)rng2 / 5.0)));
-      for (i = 0; (int16_t)i <= (int16_t)rng; i++) {
-        battle_action_queue++;
-        battle_action_queue_ext[battle_action_queue] = 10 + battle_enemy_idx;
-        save_temp_buf[battle_action_queue] = prevRoleIdx;
-        battle_sprite_ext[battle_action_queue] = i;
-      }
-    }
-    for (battle_enemy_idx = 0; battle_enemy_idx <= enemy_pos_count; battle_enemy_idx++) {
-      if (menuResult == 0)
-        memcpy(&battle_role_data_copy[battle_enemy_idx], &battle_role_action[battle_enemy_idx], 10);
-      actionType = battle_role_action[battle_enemy_idx].actionType;
-      battle_action_queue++;
-      battle_action_queue_ext[battle_action_queue] = battle_enemy_idx;
-      rng2 = VB_rtcRandomNext();
-      prevRoleIdx = vb_round_banker_i16_d((double)get_player_attribute_total(party[battle_enemy_idx].role, 20) *
-                                          (0.9 + ((double)rng2 / 5.0)));
-      if (actionType == 7)
-        prevRoleIdx *= 10;
-      if (actionType == 5)
-        prevRoleIdx *= 5;
-      if (actionType == 1 || actionType == 3)
-        prevRoleIdx *= 3;
-      if (actionType == 8)
-        prevRoleIdx /= 2;
-      if (player_status[battle_enemy_idx][7] > 0)
-        prevRoleIdx *= 3;
-      if (player_battle_sprite[battle_enemy_idx].direction == 1)
-        prevRoleIdx /= 2;
-      if (player_battle_sprite[battle_enemy_idx].direction == 2)
-        prevRoleIdx = 0;
-      save_temp_buf[battle_action_queue] = prevRoleIdx;
-    }
-
-    for (i = 0; i < battle_action_queue; i++) {
-      for (j = i + 1; j <= battle_action_queue; j++) {
-        if (save_temp_buf[i] < save_temp_buf[j]) {
-          swap_values(&save_temp_buf[i], &save_temp_buf[j]);
-          swap_values((int16_t *)&battle_action_queue_ext[i], (int16_t *)&battle_action_queue_ext[j]);
-          swap_values((int16_t *)&battle_sprite_ext[i], (int16_t *)&battle_sprite_ext[j]);
-        }
-      }
-    }
-
-    for (l = 0; l <= battle_action_queue; l++) {
-      npc_sprite_num = 0;
-      battle_sub_flag = 0;
-
-      if (battle_action_queue_ext[l] >= 10) {
-        if (battle_select_max == 0) {
-          battle_enemy_idx = battle_action_queue_ext[l] - 10;
-          if (enemy_status[battle_enemy_idx][2] || enemy_status[battle_enemy_idx][1])
-            goto L_00420322;
-          if (l > 0)
-            battle_sub_flag = (battle_action_queue_ext[l] == battle_action_queue_ext[l - 1]);
-          if (enemy_battle_data[battle_enemy_idx].hp > 0) {
-            theurgyResult8 = random_alive_party_member();
-            enemy_attack_role(battle_enemy_idx, theurgyResult8, battle_sprite_ext[l]);
+      goto L_0041EAAA;
+      L_0041DECC:
+        if (dirResult == -1) {
+          prevRoleIdx = battle_curr_role_idx;
+          for (i = 0; i < battle_curr_role_idx; i++) {
+            if (check_player_alive(i) > 0)
+              prevRoleIdx = i;
           }
-        }
-        goto L_00420322;
-      }
-
-      battle_enemy_idx = battle_action_queue_ext[l];
-      if ((int16_t)battle_enemy_idx < 0)
-        goto L_00420322;
-      roleID = party[battle_enemy_idx].role;
-      if (playerRoles(roleID, 9) <= 0 && (int16_t)player_status[battle_enemy_idx][4] <= 0)
-        goto L_00420322;
-      if (player_status[battle_enemy_idx][2] > 0)
-        goto L_00420322;
-      if (player_status[battle_enemy_idx][1] > 0)
-        goto L_00420322;
-
-      if (auto_battle_flag >= 2) {
-        battle_role_action[battle_enemy_idx].target = theurgyResult7;
-        if (auto_battle_flag == 2)
-          battle_role_action[battle_enemy_idx].actionType = 0;
-        if (auto_battle_flag == 9) {
-          battle_role_action[battle_enemy_idx].actionType = 2;
-          rng2 = VB_rtcRandomNext();
-          battle_role_action[battle_enemy_idx].itemID = playerRoles(roleID, 32 + VB_Int(rng2 * 4.0));
-        }
-      }
-      if (player_status[battle_enemy_idx][0] > 0)
-        battle_role_action[battle_enemy_idx].actionType = 9;
-
-      targetIdx = battle_role_action[battle_enemy_idx].target;
-      if (targetIdx >= 0) {
-        while (enemy_battle_data[targetIdx].hp <= 0)
-          targetIdx = (targetIdx + 1) % enemy_max_id;
-      } else {
-        targetIdx = 0;
-      }
-      magic_select_idx = 0;
-      in_battle_action = 0;
-      battle_enemy_hp = 0;
-      theurgyResult5 = count_alive_enemies();
-      for (i = 0; i <= 4; i++)
-        battle_enemy_data_ext[i] = enemy_battle_data[i].hp;
-
-      actionTypeSel = battle_role_action[battle_enemy_idx].actionType;
-      switch (actionTypeSel) {
-      case 0:
-        calc_player_attack_damage(battle_enemy_idx, roleID, targetIdx);
-        break;
-      case 1: {
-        itemObjID = battle_role_action[battle_enemy_idx].itemID;
-        k = objects[itemObjID].data[0];
-        copy_subfile_data(k);
-        theurgyResult6 = get_player_attribute_total(roleID, 18);
-        hasEffect = (theurgy_data.type == 8) ? 0 : 1;
-        player_attack_anim(battle_enemy_idx, hasEffect);
-        process_Script(battle_enemy_idx, &objects[itemObjID].data[3]);
-        if (redraw_hp_mp_flag) {
-          if (theurgy_data.type == 8) {
-            play_sound(theurgy_data.sound, 0);
-            animate_battle_sprites(battle_enemy_idx, battle_enemy_idx);
-          }
-          if ((int16_t)theurgy_data.effect >= 0)
-            calc_display_theurgy(battle_enemy_idx, battle_role_action[battle_enemy_idx].target, itemObjID,
-                                 theurgyResult6);
-          playerRoles(roleID, 10) -= theurgy_data.costMP;
-          process_theurgy_gosub(itemObjID, &theurgyType);
-          if (theurgy_data.type == 8) {
-            player_battle_sprite[battle_enemy_idx].x = player_battle_sprite[battle_enemy_idx].origX;
-            player_battle_sprite[battle_enemy_idx].y = player_battle_sprite[battle_enemy_idx].origY;
-            load_battle_sprites();
-            npc_sprite_num = -1;
-          }
-          rng2 = VB_rtcRandomNext();
-          playerExp.magic[roleID].count = vb_round_banker_i16_d((double)playerExp.magic[roleID].count + rng2 * 2.0);
-          playerExp.magicPower[roleID].count++;
-        }
-        break;
-      }
-      case 2: {
-        itemObjID = battle_role_action[battle_enemy_idx].itemID;
-        k = objects[itemObjID].data[0];
-        copy_subfile_data(k);
-        mpCost = theurgy_data.costMP;
-        hasEffect = (theurgy_data.type == 9) ? 0 : 1;
-        player_attack_anim(battle_enemy_idx, hasEffect);
-        process_Script(battle_enemy_idx, &objects[itemObjID].data[3]);
-        if (redraw_hp_mp_flag) {
-          actionParam = battle_enemy_idx;
-          npc_dir_frame = 0;
-          theurgyResult6 = get_player_attribute_total(roleID, 18);
-          if (theurgy_data.type == 9) {
-            npc_dir_frame = -1;
-            cast_theurgy_anim(itemObjID);
-            reset_battle_sprite_pos(battle_enemy_idx);
-            actionParam = 9;
-          }
-          calc_display_theurgy(actionParam, targetIdx, itemObjID, theurgyResult6);
-          process_Script(targetIdx, &objects[itemObjID].data[2]);
-          apply_enemy_poison_damage();
-          show_enemy_damage(&theurgyType);
-          if (theurgyType)
-            enemy_hit_reaction(5);
-          playerRoles(roleID, 10) -= mpCost;
-          rng2 = VB_rtcRandomNext();
-          playerExp.magic[roleID].count = vb_round_banker_i16_d((double)playerExp.magic[roleID].count + rng2 * 2.0);
-          playerExp.magicPower[roleID].count++;
-        }
-        break;
-      }
-      case 3: {
-        player_attack_anim(battle_enemy_idx, 0);
-        itemObjID = battle_role_action[battle_enemy_idx].itemID;
-        draw_text_at(200, 50, itemObjID, 14);
-        play_sound(28, 0);
-        int16_t targetStart, targetEnd;
-        if (battle_role_action[battle_enemy_idx].target == (uint16_t)-1) {
-          targetStart = 0;
-          targetEnd = enemy_pos_count;
-          battle_role_action[battle_enemy_idx].target = battle_enemy_idx;
+          battle_curr_role_idx = prevRoleIdx;
+          continue;
         } else {
-          targetStart = battle_role_action[battle_enemy_idx].target;
-          targetEnd = battle_role_action[battle_enemy_idx].target;
-        }
-        for (m = 2; m <= 16; m++) {
-          for (n = targetStart; n <= targetEnd; n++)
-            get_sprite_frame_data(n, 10 - VB_Abs(m - 10));
-          PAL_WaitTime(5);
-        }
-        process_theurgy_gosub(itemObjID, &theurgyType);
-        PAL_GetBin((uint16_t *)&prevRoleIdx, objects[itemObjID].data[6], 3);
-        if (prevRoleIdx)
-          remove_inventory_item(itemObjID, 1);
-        break;
-      }
-      case 4: {
-        itemObjID = battle_role_action[battle_enemy_idx].itemID;
-        player_attack_anim(battle_enemy_idx, 0);
-        draw_text_at(200, 50, itemObjID, 14);
-        PAL_Delay(35);
-        player_battle_sprite[battle_enemy_idx].direction = 6;
-        for (i = 0; i <= 4; i++) {
-          if (party[i].role < 5) {
-            battle_role_data_ext[i][0] = playerRoles(party[i].role, 9);
-            battle_role_data_ext[i][1] = playerRoles(party[i].role, 10);
-          }
-        }
-        play_sound(27, 0);
-        process_Script(targetIdx, &objects[itemObjID].data[4]);
-        if (redraw_hp_mp_flag) {
-          PAL_GetBin((uint16_t *)&prevRoleIdx, objects[itemObjID].data[6], 3);
-          if (prevRoleIdx)
-            remove_inventory_item(itemObjID, 1);
-        }
-        theurgyType = 0;
-        show_party_hp_mp_change(&theurgyType);
-        show_enemy_damage(&theurgyType);
-        if (theurgyType) {
-          draw_battle_scene(3, 0);
-          draw_battle_scene(5, 0);
-        }
-        for (i = 0; i <= team_number; i++) {
-          if (battle_enemy_data_ext[i] > 0 && enemy_battle_data[i].hp <= 0) {
-            npc_sprite_num = -1;
-            battle_enemy_hp = enemy_runtime_data[i].deathSound;
-          }
-        }
-        break;
-      }
-      case 5:
-        player_battle_sprite[battle_enemy_idx].direction = 3;
-        player_battle_sprite[battle_enemy_idx].actionState = 3;
-        draw_battle_scene(4, 0);
-        playerExp.defense[roleID].count += 2;
-        break;
-      case 6:
-        calc_player_attack_damage(battle_enemy_idx, roleID, targetIdx);
-        auto_battle_flag = 2;
-        break;
-      case 7: {
-        equipID = player_battle_sprite[battle_enemy_idx].equipID;
-        magicSubfile2 = objects[equipID].data[0];
-        copy_subfile_data(magicSubfile2);
-        theurgyResult6 = 0;
-        for (i = 0; i <= enemy_pos_count; i++) {
-          k = party[i].role;
-          if (check_player_alive(i) > 1 && playerRoles(k, 9) >= theurgy_data.costMP) {
-            playerRoles(k, 9) -= theurgy_data.costMP;
-            theurgyResult6 += playerRoles(k, 17) + playerRoles(k, 18);
-          }
-        }
-        if (theurgy_data.type < 9) {
-          if (enemy_pos_count >= 2) {
-            battle_sprite_data[0] = 274;
-            battle_sprite_data[1] = 244;
-            battle_sprite_data[2] = 216;
-            battle_sprite_data_ext[0] = 186;
-            battle_sprite_data_ext[1] = 172;
-            battle_sprite_data_ext[2] = 158;
-          } else {
-            battle_sprite_data[0] = 244;
-            battle_sprite_data[1] = 216;
-            battle_sprite_data_ext[0] = 172;
-            battle_sprite_data_ext[1] = 158;
-          }
-          swap_values((int16_t *)&battle_sprite_data[enemy_pos_count],
-                      (int16_t *)&battle_sprite_data[battle_enemy_idx]);
-          swap_values((int16_t *)&battle_sprite_data_ext[enemy_pos_count],
-                      (int16_t *)&battle_sprite_data_ext[battle_enemy_idx]);
-          play_sound(29, 0);
-          adjust_battle_sprite_pos();
-          magic_select_idx = (uint16_t)-1;
-        }
-        rng = 0;
-        for (i = 0; i <= enemy_pos_count; i++) {
-          rng += (check_player_alive(i) > 1);
-          battle_order_array[i] = i;
-        }
-        swap_values((int16_t *)&battle_order_array[enemy_pos_count], (int16_t *)&battle_order_array[battle_enemy_idx]);
-        if (rng > 1) {
-          if (theurgy_data.type < 9) {
-            for (k = 0; k <= enemy_pos_count; k++) {
-              i = battle_order_array[k];
-              if (check_player_alive(i) > 1) {
-                if (i != battle_enemy_idx) {
-                  player_battle_sprite[i].direction = 5;
-                  draw_battle_scene(3, 0);
-                  player_battle_sprite[i].direction = 6;
-                  draw_battle_scene(1, 0);
-                } else {
-                  enemy_battle_data_ext[i] = (uint16_t)-1;
-                  player_battle_sprite[i].direction = 5;
-                  draw_battle_scene(1, 8);
+          tmp2 = dirResult;
+          switch (tmp2) {
+          case 0:
+            if (playerRoles(party[battle_curr_role_idx].role, 4)) {
+              battle_role_action[battle_curr_role_idx].actionType = 10;
+              check_battle_action(&directionParam, &actionParam);
+            } else {
+              enemyTarget = select_enemy_target();
+              if (enemyTarget >= 0) {
+                battle_role_action[battle_curr_role_idx].target = enemyTarget;
+                battle_role_action[battle_curr_role_idx].actionType = 0;
+                check_battle_action(&directionParam, &actionParam);
+              }
+            }
+            break;
+          case 1:
+          L_0041DFF8:
+            for (;;) {
+              if (player_status[battle_curr_role_idx][3])
+                theurgyType = 0;
+              else
+                theurgyType = 2;
+              theurgyResult3 = select_theurgy(party[battle_curr_role_idx].role, &actionParam, theurgyType);
+              draw_battle_status_bar();
+              if (theurgyResult3 < 0)
+                goto L_0041E404;
+              PAL_GetBin((uint16_t *)&prevRoleIdx, objects[theurgyResult3].data[6], 3);
+              PAL_GetBin((uint16_t *)&isTargeted, objects[theurgyResult3].data[6], 4);
+              battle_role_action[battle_curr_role_idx].itemID = theurgyResult3;
+              battle_role_action[battle_curr_role_idx].invIndex = actionParam;
+              if (prevRoleIdx) {
+                if (isTargeted) {
+                  battle_role_action[battle_curr_role_idx].target = battle_curr_role_idx;
+                  goto L_0041E134;
+                }
+                enemyTarget = select_enemy_target();
+                if (enemyTarget >= 0) {
+                  battle_role_action[battle_curr_role_idx].target = enemyTarget;
+                  goto L_0041E134;
+                }
+                goto L_0041DFF8;
+              } else if (isTargeted) {
+                battle_role_action[battle_curr_role_idx].target = battle_curr_role_idx;
+                break;
+              } else {
+                theurgyResult4 = select_battle_target();
+                if (theurgyResult4 >= 0) {
+                  battle_role_action[battle_curr_role_idx].target = theurgyResult4;
+                  break;
                 }
               }
             }
-          } else {
-            player_attack_anim(battle_enemy_idx, 0);
+            battle_role_action[battle_curr_role_idx].actionType = 1;
+          L_0041E1C0:
+            check_battle_action(&directionParam, &actionParam);
+            goto L_0041E404;
+          case 2:
+            PAL_GetBin((uint16_t *)&isTargeted, objects[player_battle_sprite[battle_curr_role_idx].equipID].data[6], 4);
+            if (isTargeted == 0) {
+              enemyTarget = select_enemy_target();
+            } else
+              enemyTarget = 0;
+            if (enemyTarget >= 0) {
+              for (i = 0; i <= enemy_pos_count; i++)
+                battle_role_action[i].actionType = -1;
+              battle_role_action[battle_curr_role_idx].actionType = 7;
+              battle_role_action[battle_curr_role_idx].target = enemyTarget;
+              battle_curr_role_idx = enemy_pos_count;
+              check_battle_action(&directionParam, &actionParam);
+            }
+            break;
+          case 3:
+            for (;;) {
+              theurgyResult2 = menu_loop(&menuParam1, 4, 16, 56, 3, 5);
+              if (theurgyResult2 < 0) {
+                draw_battle_status_bar();
+                goto L_0041E404;
+              }
+              tmp3 = theurgyResult2;
+              if (tmp3 == 0) {
+                theurgyResult7 = set_auto_battle_targets();
+              } else if (tmp3 == 1) {
+                theurgyResult = menu_loop(&menuParam2, 24, 50, 23, 2, 2);
+                if (theurgyResult < 0)
+                  theurgyResult2 = -2;
+                else
+                  theurgyResult2 = select_battle_action(theurgyResult);
+              } else if (tmp3 == 2) {
+                battle_set_action_code();
+              } else if (tmp3 == 3) {
+                battle_set_action_walk();
+              } else if (tmp3 == 4) {
+                entry_stub_show_text_and_dialog();
+              }
+              if (theurgyResult2 != -2)
+                break;
+            }
+            if (theurgyResult2 != 4) {
+              check_battle_action(&directionParam, &actionParam);
+              draw_battle_status_bar();
+            }
+            break;
           }
-          load_theurgy_image(magicSubfile2);
-          if (theurgy_data.type < 9 && player_battle_sprite[battle_enemy_idx].direction == 5)
-            player_battle_sprite[battle_enemy_idx].direction = 6;
-          actionParam = 3;
-          npc_dir_frame = 0;
-          if (theurgy_data.type == 9) {
-            npc_dir_frame = -1;
-            cast_theurgy_anim(equipID);
-            actionParam = 9;
-          }
-          theurgyResult6 /= 4;
-          calc_display_theurgy(actionParam, targetIdx, equipID, theurgyResult6);
-          apply_enemy_poison_damage();
-          show_enemy_damage(&theurgyType);
-          if (theurgyType)
-            enemy_hit_reaction(5);
-        } else {
-          draw_battle_scene(2, 0);
-          play_sound(30, 0);
-          for (i = 0; i <= enemy_pos_count; i++)
-            if (player_battle_sprite[i].direction == 0)
-              player_battle_sprite[i].direction = 5;
-          draw_battle_scene(7, 0);
+        L_0041E404:
+          battle_role_idx_2 = 0;
         }
-        for (i = 0; i <= battle_action_queue; i++)
-          if (battle_action_queue_ext[i] < 10)
-            battle_action_queue_ext[i] = -1;
-        break;
-      }
-      case 8: {
-        prevRoleIdx = 0;
-        for (i = 0; i <= team_number; i++) {
-          hasEffect = calc_level_bonus(i, 4) + enemy_runtime_data[i].dexterity;
-          if (enemy_battle_data[i].hp > 0)
-            prevRoleIdx += hasEffect;
-        }
+        goto L_0041EAAA;
+      L_0041E134:
+        battle_role_action[battle_curr_role_idx].actionType = 2;
+        goto L_0041E1C0;
+      L_0041EAAA:
+        if (battle_curr_role_idx >= battle_extra_param)
+          break;
+    }
+    L_0041EAC0:
+      dialog_y_pos = 200;
+      draw_battle_scene(1, 0);
+
+      battle_action_queue = -1;
+      for (battle_enemy_idx = 0; battle_enemy_idx <= team_number; battle_enemy_idx++) {
+        float prod = VB_rtcRandomNext() * (float)enemy_runtime_data[battle_enemy_idx].dualMove;
+        rng = (prod > 0) ? 1 : ((prod < 0) ? -1 : 0);
         rng2 = VB_rtcRandomNext();
-        hasEffect = ((float)get_player_attribute_total(party[battle_enemy_idx].role, 21) >=
-                     (float)((double)prevRoleIdx * rng2));
-        if (surpriseFlag == 0)
-          hasEffect = 0;
-        flee_from_battle(battle_enemy_idx, &hasEffect);
-        break;
+        prevRoleIdx = vb_round_banker_i16_d(
+            (double)(calc_level_bonus(battle_enemy_idx, 3) + enemy_runtime_data[battle_enemy_idx].dexterity) *
+            (0.9 + ((double)rng2 / 5.0)));
+        for (i = 0; (int16_t)i <= (int16_t)rng; i++) {
+          battle_action_queue++;
+          battle_action_queue_ext[battle_action_queue] = 10 + battle_enemy_idx;
+          save_temp_buf[battle_action_queue] = prevRoleIdx;
+          battle_sprite_ext[battle_action_queue] = i;
+        }
       }
-      case 9:
-        menuResult2 = random_alive_party_member();
-        if (menuResult2 != battle_enemy_idx)
-          player_attack_player(battle_enemy_idx, menuResult2);
-        break;
-      case 10:
-        player_attack_execute(battle_enemy_idx, roleID);
-        break;
-      default:
-        break;
+      for (battle_enemy_idx = 0; battle_enemy_idx <= enemy_pos_count; battle_enemy_idx++) {
+        if (menuResult == 0)
+          memcpy(&battle_role_data_copy[battle_enemy_idx], &battle_role_action[battle_enemy_idx], 10);
+        actionType = battle_role_action[battle_enemy_idx].actionType;
+        battle_action_queue++;
+        battle_action_queue_ext[battle_action_queue] = battle_enemy_idx;
+        rng2 = VB_rtcRandomNext();
+        prevRoleIdx = vb_round_banker_i16_d((double)get_player_attribute_total(party[battle_enemy_idx].role, 20) *
+                                            (0.9 + ((double)rng2 / 5.0)));
+        if (actionType == 7)
+          prevRoleIdx *= 10;
+        if (actionType == 5)
+          prevRoleIdx *= 5;
+        if (actionType == 1 || actionType == 3)
+          prevRoleIdx *= 3;
+        if (actionType == 8)
+          prevRoleIdx /= 2;
+        if (player_status[battle_enemy_idx][7] > 0)
+          prevRoleIdx *= 3;
+        if (player_battle_sprite[battle_enemy_idx].direction == 1)
+          prevRoleIdx /= 2;
+        if (player_battle_sprite[battle_enemy_idx].direction == 2)
+          prevRoleIdx = 0;
+        save_temp_buf[battle_action_queue] = prevRoleIdx;
       }
 
-      if (count_alive_enemies() < theurgyResult5) {
-        npc_sprite_num = -1;
-        play_sound(battle_enemy_hp, 0);
+      for (i = 0; i < battle_action_queue; i++) {
+        for (j = i + 1; j <= battle_action_queue; j++) {
+          if (save_temp_buf[i] < save_temp_buf[j]) {
+            swap_values(&save_temp_buf[i], &save_temp_buf[j]);
+            swap_values((int16_t *)&battle_action_queue_ext[i], (int16_t *)&battle_action_queue_ext[j]);
+            swap_values((int16_t *)&battle_sprite_ext[i], (int16_t *)&battle_sprite_ext[j]);
+          }
+        }
       }
-    L_00420322:
+
+      for (l = 0; l <= battle_action_queue; l++) {
+        npc_sprite_num = 0;
+        battle_sub_flag = 0;
+
+        if (battle_action_queue_ext[l] >= 10) {
+          if (battle_select_max == 0) {
+            battle_enemy_idx = battle_action_queue_ext[l] - 10;
+            if (!(enemy_status[battle_enemy_idx][2] || enemy_status[battle_enemy_idx][1])) {
+              if (l > 0)
+                battle_sub_flag = (battle_action_queue_ext[l] == battle_action_queue_ext[l - 1]);
+              if (enemy_battle_data[battle_enemy_idx].hp > 0) {
+                theurgyResult8 = random_alive_party_member();
+                enemy_attack_role(battle_enemy_idx, theurgyResult8, battle_sprite_ext[l]);
+              }
+              goto L_00420322;
+            }
+          }
+        } else {
+          battle_enemy_idx = battle_action_queue_ext[l];
+          if ((int16_t)battle_enemy_idx >= 0) {
+            roleID = party[battle_enemy_idx].role;
+            if (playerRoles(roleID, 9) > 0 || (int16_t)player_status[battle_enemy_idx][4] > 0) {
+              if ((player_status[battle_enemy_idx][2] <= 0) && (player_status[battle_enemy_idx][1] <= 0)) {
+
+                if (auto_battle_flag >= 2) {
+                  battle_role_action[battle_enemy_idx].target = theurgyResult7;
+                  if (auto_battle_flag == 2)
+                    battle_role_action[battle_enemy_idx].actionType = 0;
+                  if (auto_battle_flag == 9) {
+                    battle_role_action[battle_enemy_idx].actionType = 2;
+                    rng2 = VB_rtcRandomNext();
+                    battle_role_action[battle_enemy_idx].itemID = playerRoles(roleID, 32 + VB_Int(rng2 * 4.0));
+                  }
+                }
+                if (player_status[battle_enemy_idx][0] > 0)
+                  battle_role_action[battle_enemy_idx].actionType = 9;
+
+                targetIdx = battle_role_action[battle_enemy_idx].target;
+                if (targetIdx >= 0) {
+                  while (enemy_battle_data[targetIdx].hp <= 0)
+                    targetIdx = (targetIdx + 1) % enemy_max_id;
+                } else {
+                  targetIdx = 0;
+                }
+                magic_select_idx = 0;
+                in_battle_action = 0;
+                battle_enemy_hp = 0;
+                theurgyResult5 = count_alive_enemies();
+                for (i = 0; i <= 4; i++)
+                  battle_enemy_data_ext[i] = enemy_battle_data[i].hp;
+
+                actionTypeSel = battle_role_action[battle_enemy_idx].actionType;
+                switch (actionTypeSel) {
+                case 0:
+                  calc_player_attack_damage(battle_enemy_idx, roleID, targetIdx);
+                  break;
+                case 1: {
+                  itemObjID = battle_role_action[battle_enemy_idx].itemID;
+                  k = objects[itemObjID].data[0];
+                  copy_subfile_data(k);
+                  theurgyResult6 = get_player_attribute_total(roleID, 18);
+                  hasEffect = (theurgy_data.type == 8) ? 0 : 1;
+                  player_attack_anim(battle_enemy_idx, hasEffect);
+                  process_Script(battle_enemy_idx, &objects[itemObjID].data[3]);
+                  if (redraw_hp_mp_flag) {
+                    if (theurgy_data.type == 8) {
+                      play_sound(theurgy_data.sound, 0);
+                      animate_battle_sprites(battle_enemy_idx, battle_enemy_idx);
+                    }
+                    if ((int16_t)theurgy_data.effect >= 0)
+                      calc_display_theurgy(battle_enemy_idx, battle_role_action[battle_enemy_idx].target, itemObjID,
+                                           theurgyResult6);
+                    playerRoles(roleID, 10) -= theurgy_data.costMP;
+                    process_theurgy_gosub(itemObjID, &theurgyType);
+                    if (theurgy_data.type == 8) {
+                      player_battle_sprite[battle_enemy_idx].x = player_battle_sprite[battle_enemy_idx].origX;
+                      player_battle_sprite[battle_enemy_idx].y = player_battle_sprite[battle_enemy_idx].origY;
+                      load_battle_sprites();
+                      npc_sprite_num = -1;
+                    }
+                    rng2 = VB_rtcRandomNext();
+                    playerExp.magic[roleID].count = vb_round_banker_i16_d((double)playerExp.magic[roleID].count + rng2 * 2.0);
+                    playerExp.magicPower[roleID].count++;
+                  }
+                  break;
+                }
+                case 2: {
+                  itemObjID = battle_role_action[battle_enemy_idx].itemID;
+                  k = objects[itemObjID].data[0];
+                  copy_subfile_data(k);
+                  mpCost = theurgy_data.costMP;
+                  hasEffect = (theurgy_data.type == 9) ? 0 : 1;
+                  player_attack_anim(battle_enemy_idx, hasEffect);
+                  process_Script(battle_enemy_idx, &objects[itemObjID].data[3]);
+                  if (redraw_hp_mp_flag) {
+                    actionParam = battle_enemy_idx;
+                    npc_dir_frame = 0;
+                    theurgyResult6 = get_player_attribute_total(roleID, 18);
+                    if (theurgy_data.type == 9) {
+                      npc_dir_frame = -1;
+                      cast_theurgy_anim(itemObjID);
+                      reset_battle_sprite_pos(battle_enemy_idx);
+                      actionParam = 9;
+                    }
+                    calc_display_theurgy(actionParam, targetIdx, itemObjID, theurgyResult6);
+                    process_Script(targetIdx, &objects[itemObjID].data[2]);
+                    apply_enemy_poison_damage();
+                    show_enemy_damage(&theurgyType);
+                    if (theurgyType)
+                      enemy_hit_reaction(5);
+                    playerRoles(roleID, 10) -= mpCost;
+                    rng2 = VB_rtcRandomNext();
+                    playerExp.magic[roleID].count = vb_round_banker_i16_d((double)playerExp.magic[roleID].count + rng2 * 2.0);
+                    playerExp.magicPower[roleID].count++;
+                  }
+                  break;
+                }
+                case 3: {
+                  player_attack_anim(battle_enemy_idx, 0);
+                  itemObjID = battle_role_action[battle_enemy_idx].itemID;
+                  draw_text_at(200, 50, itemObjID, 14);
+                  play_sound(28, 0);
+                  int16_t targetStart, targetEnd;
+                  if (battle_role_action[battle_enemy_idx].target == (uint16_t)-1) {
+                    targetStart = 0;
+                    targetEnd = enemy_pos_count;
+                    battle_role_action[battle_enemy_idx].target = battle_enemy_idx;
+                  } else {
+                    targetStart = battle_role_action[battle_enemy_idx].target;
+                    targetEnd = battle_role_action[battle_enemy_idx].target;
+                  }
+                  for (m = 2; m <= 16; m++) {
+                    for (n = targetStart; n <= targetEnd; n++)
+                      get_sprite_frame_data(n, 10 - VB_Abs(m - 10));
+                    PAL_WaitTime(5);
+                  }
+                  process_theurgy_gosub(itemObjID, &theurgyType);
+                  PAL_GetBin((uint16_t *)&prevRoleIdx, objects[itemObjID].data[6], 3);
+                  if (prevRoleIdx)
+                    remove_inventory_item(itemObjID, 1);
+                  break;
+                }
+                case 4: {
+                  itemObjID = battle_role_action[battle_enemy_idx].itemID;
+                  player_attack_anim(battle_enemy_idx, 0);
+                  draw_text_at(200, 50, itemObjID, 14);
+                  PAL_Delay(35);
+                  player_battle_sprite[battle_enemy_idx].direction = 6;
+                  for (i = 0; i <= 4; i++) {
+                    if (party[i].role < 5) {
+                      battle_role_data_ext[i][0] = playerRoles(party[i].role, 9);
+                      battle_role_data_ext[i][1] = playerRoles(party[i].role, 10);
+                    }
+                  }
+                  play_sound(27, 0);
+                  process_Script(targetIdx, &objects[itemObjID].data[4]);
+                  if (redraw_hp_mp_flag) {
+                    PAL_GetBin((uint16_t *)&prevRoleIdx, objects[itemObjID].data[6], 3);
+                    if (prevRoleIdx)
+                      remove_inventory_item(itemObjID, 1);
+                  }
+                  theurgyType = 0;
+                  show_party_hp_mp_change(&theurgyType);
+                  show_enemy_damage(&theurgyType);
+                  if (theurgyType) {
+                    draw_battle_scene(3, 0);
+                    draw_battle_scene(5, 0);
+                  }
+                  for (i = 0; i <= team_number; i++) {
+                    if (battle_enemy_data_ext[i] > 0 && enemy_battle_data[i].hp <= 0) {
+                      npc_sprite_num = -1;
+                      battle_enemy_hp = enemy_runtime_data[i].deathSound;
+                    }
+                  }
+                  break;
+                }
+                case 5:
+                  player_battle_sprite[battle_enemy_idx].direction = 3;
+                  player_battle_sprite[battle_enemy_idx].actionState = 3;
+                  draw_battle_scene(4, 0);
+                  playerExp.defense[roleID].count += 2;
+                  break;
+                case 6:
+                  calc_player_attack_damage(battle_enemy_idx, roleID, targetIdx);
+                  auto_battle_flag = 2;
+                  break;
+                case 7: {
+                  equipID = player_battle_sprite[battle_enemy_idx].equipID;
+                  magicSubfile2 = objects[equipID].data[0];
+                  copy_subfile_data(magicSubfile2);
+                  theurgyResult6 = 0;
+                  for (i = 0; i <= enemy_pos_count; i++) {
+                    k = party[i].role;
+                    if (check_player_alive(i) > 1 && playerRoles(k, 9) >= theurgy_data.costMP) {
+                      playerRoles(k, 9) -= theurgy_data.costMP;
+                      theurgyResult6 += playerRoles(k, 17) + playerRoles(k, 18);
+                    }
+                  }
+                  if (theurgy_data.type < 9) {
+                    if (enemy_pos_count >= 2) {
+                      battle_sprite_data[0] = 274;
+                      battle_sprite_data[1] = 244;
+                      battle_sprite_data[2] = 216;
+                      battle_sprite_data_ext[0] = 186;
+                      battle_sprite_data_ext[1] = 172;
+                      battle_sprite_data_ext[2] = 158;
+                    } else {
+                      battle_sprite_data[0] = 244;
+                      battle_sprite_data[1] = 216;
+                      battle_sprite_data_ext[0] = 172;
+                      battle_sprite_data_ext[1] = 158;
+                    }
+                    swap_values((int16_t *)&battle_sprite_data[enemy_pos_count],
+                                (int16_t *)&battle_sprite_data[battle_enemy_idx]);
+                    swap_values((int16_t *)&battle_sprite_data_ext[enemy_pos_count],
+                                (int16_t *)&battle_sprite_data_ext[battle_enemy_idx]);
+                    play_sound(29, 0);
+                    adjust_battle_sprite_pos();
+                    magic_select_idx = (uint16_t)-1;
+                  }
+                  rng = 0;
+                  for (i = 0; i <= enemy_pos_count; i++) {
+                    rng += (check_player_alive(i) > 1);
+                    battle_order_array[i] = i;
+                  }
+                  swap_values((int16_t *)&battle_order_array[enemy_pos_count], (int16_t *)&battle_order_array[battle_enemy_idx]);
+                  if (rng > 1) {
+                    if (theurgy_data.type < 9) {
+                      for (k = 0; k <= enemy_pos_count; k++) {
+                        i = battle_order_array[k];
+                        if (check_player_alive(i) > 1) {
+                          if (i != battle_enemy_idx) {
+                            player_battle_sprite[i].direction = 5;
+                            draw_battle_scene(3, 0);
+                            player_battle_sprite[i].direction = 6;
+                            draw_battle_scene(1, 0);
+                          } else {
+                            enemy_battle_data_ext[i] = (uint16_t)-1;
+                            player_battle_sprite[i].direction = 5;
+                            draw_battle_scene(1, 8);
+                          }
+                        }
+                      }
+                    } else {
+                      player_attack_anim(battle_enemy_idx, 0);
+                    }
+                    load_theurgy_image(magicSubfile2);
+                    if (theurgy_data.type < 9 && player_battle_sprite[battle_enemy_idx].direction == 5)
+                      player_battle_sprite[battle_enemy_idx].direction = 6;
+                    actionParam = 3;
+                    npc_dir_frame = 0;
+                    if (theurgy_data.type == 9) {
+                      npc_dir_frame = -1;
+                      cast_theurgy_anim(equipID);
+                      actionParam = 9;
+                    }
+                    theurgyResult6 /= 4;
+                    calc_display_theurgy(actionParam, targetIdx, equipID, theurgyResult6);
+                    apply_enemy_poison_damage();
+                    show_enemy_damage(&theurgyType);
+                    if (theurgyType)
+                      enemy_hit_reaction(5);
+                  } else {
+                    draw_battle_scene(2, 0);
+                    play_sound(30, 0);
+                    for (i = 0; i <= enemy_pos_count; i++)
+                      if (player_battle_sprite[i].direction == 0)
+                        player_battle_sprite[i].direction = 5;
+                    draw_battle_scene(7, 0);
+                  }
+                  for (i = 0; i <= battle_action_queue; i++)
+                    if (battle_action_queue_ext[i] < 10)
+                      battle_action_queue_ext[i] = -1;
+                  break;
+                }
+                case 8: {
+                  prevRoleIdx = 0;
+                  for (i = 0; i <= team_number; i++) {
+                    hasEffect = calc_level_bonus(i, 4) + enemy_runtime_data[i].dexterity;
+                    if (enemy_battle_data[i].hp > 0)
+                      prevRoleIdx += hasEffect;
+                  }
+                  rng2 = VB_rtcRandomNext();
+                  hasEffect = ((float)get_player_attribute_total(party[battle_enemy_idx].role, 21) >=
+                               (float)((double)prevRoleIdx * rng2));
+                  if (surpriseFlag == 0)
+                    hasEffect = 0;
+                  flee_from_battle(battle_enemy_idx, &hasEffect);
+                  break;
+                }
+                case 9:
+                  menuResult2 = random_alive_party_member();
+                  if (menuResult2 != battle_enemy_idx)
+                    player_attack_player(battle_enemy_idx, menuResult2);
+                  break;
+                case 10:
+                  player_attack_execute(battle_enemy_idx, roleID);
+                  break;
+                default:
+                  break;
+                }
+
+                if (count_alive_enemies() < theurgyResult5) {
+                  npc_sprite_num = -1;
+                  play_sound(battle_enemy_hp, 0);
+                }
+              }
+            }
+          }
+        }
+      L_00420322:
+        for (i = 0; i <= 4; i++)
+          battle_enemy_data_ext[i] = enemy_battle_data[i].hp;
+        if (npc_sprite_num) {
+          play_rng_effect(1, 65);
+          npc_sprite_num = 0;
+          for (i = 0; i <= 11; i++)
+            damage_numbers[i].timer = 0;
+        }
+        if (npc_dir_frame) {
+          load_battle_sprites();
+          npc_dir_frame = 0;
+          play_theurgy_rng_anim();
+        }
+        if (count_alive_enemies() > 0 && magic_select_idx) {
+          for (i = 0; i <= enemy_pos_count; i++) {
+            if (player_battle_sprite[i].direction >= 5) {
+              player_battle_sprite[i].direction = 0;
+              battle_sprite_data[i] = player_battle_sprite[i].origX;
+              battle_sprite_data_ext[i] = player_battle_sprite[i].origY;
+            }
+          }
+          adjust_battle_sprite_pos();
+          magic_select_idx = 0;
+        }
+        update_player_battle_status();
+        if (check_party_alive() == 0) {
+          battleResult = 1;
+          goto L_00420C0E;
+        }
+        if (count_alive_enemies() <= 0) {
+          battleResult = 3;
+          goto L_00420C0E;
+        }
+        if (battle_action_param) {
+          battleResult = battle_action_param;
+          goto L_00420C0E;
+        }
+      }
+
+      theurgyType = 2;
+      for (i = 0; i <= team_number; i++) {
+        for (j = 0; j <= 15; j++)
+          if (enemy_status[i][j] > 0)
+            enemy_status[i][j]--;
+        battle_enemy_data_ext[i] = enemy_battle_data[i].hp;
+        if (enemy_battle_data[i].hp > 0) {
+          for (j = 0; j <= 15; j++) {
+            if (enemy_poison_status[i][j].poisonID > 0)
+              process_Script(i, &enemy_poison_status[i][j].poisonScript);
+          }
+          hpLost = battle_enemy_data_ext[i] - enemy_battle_data[i].hp;
+          if (hpLost > 0) {
+            add_damage_number(enemy_battle_data[i].x, enemy_battle_data[i].y - 110, hpLost, 1);
+            theurgyType = 10;
+          }
+          if (enemy_battle_data[i].hp <= 0)
+            npc_sprite_num = -1;
+        }
+      }
+      for (i = 0; i <= enemy_pos_count; i++) {
+        for (j = 0; j <= 15; j++)
+          if (player_status[i][j] > 0)
+            player_status[i][j]--;
+        k = party[i].role;
+        damage_target_hp = playerRoles(k, 9);
+        battle_select_idx = playerRoles(k, 10);
+        if (damage_target_hp > 0) {
+          player_status[i][4] = 0;
+          for (j = 0; j <= 15; j++) {
+            if (poison_status[i][j].poisonID > 0)
+              process_Script(i, &poison_status[i][j].poisonScript);
+          }
+          hpLost = damage_target_hp - playerRoles(k, 9);
+          if (hpLost > 0) {
+            add_damage_number(player_battle_sprite[i].x, player_battle_sprite[i].y - 70, hpLost, 1);
+            theurgyType = 10;
+          }
+          hpLost = battle_select_idx - playerRoles(k, 10);
+          if (hpLost > 0) {
+            add_damage_number(player_battle_sprite[i].x, player_battle_sprite[i].y - 62, hpLost, 2);
+            theurgyType = 10;
+          }
+        }
+        battle_role_data_ext[i][0] = playerRoles(k, 9);
+        battle_role_data_ext[i][1] = playerRoles(k, 10);
+        playerRoles(k, 9) = damage_target_hp;
+        playerRoles(k, 10) = battle_select_idx;
+      }
+      draw_battle_scene(theurgyType, 0);
       for (i = 0; i <= 4; i++)
         battle_enemy_data_ext[i] = enemy_battle_data[i].hp;
+      for (i = 0; i <= enemy_pos_count; i++) {
+        k = party[i].role;
+        playerRoles(k, 9) = battle_role_data_ext[i][0];
+        playerRoles(k, 10) = battle_role_data_ext[i][1];
+      }
+      if (battle_select_max > 0) {
+        battle_select_max--;
+        if (battle_select_max == 0)
+          npc_sprite_num = 1;
+      }
       if (npc_sprite_num) {
         play_rng_effect(1, 65);
         npc_sprite_num = 0;
-        for (i = 0; i <= 11; i++)
-          damage_numbers[i].timer = 0;
       }
-      if (npc_dir_frame) {
-        load_battle_sprites();
-        npc_dir_frame = 0;
-        play_theurgy_rng_anim();
+      PAL_ReadKey(key_state_array);
+      if (auto_battle_flag <= 2) {
+        if (key_state_array[1] > 0 || key_state_array[82] > 0)
+          auto_battle_flag = 0;
       }
-      if (count_alive_enemies() > 0 && magic_select_idx) {
-        for (i = 0; i <= enemy_pos_count; i++) {
-          if (player_battle_sprite[i].direction >= 5) {
-            player_battle_sprite[i].direction = 0;
-            battle_sprite_data[i] = player_battle_sprite[i].origX;
-            battle_sprite_data_ext[i] = player_battle_sprite[i].origY;
-          }
-        }
-        adjust_battle_sprite_pos();
-        magic_select_idx = 0;
-      }
-      update_player_battle_status();
-      if (check_party_alive() == 0) {
-        battleResult = 1;
-        goto L_00420C0E;
-      }
-      if (count_alive_enemies() <= 0) {
-        battleResult = 3;
-        goto L_00420C0E;
-      }
-      if (battle_action_param) {
-        battleResult = battle_action_param;
-        goto L_00420C0E;
-      }
+      DoEvents_check_exit();
     }
-
-    theurgyType = 2;
-    for (i = 0; i <= team_number; i++) {
-      for (j = 0; j <= 15; j++)
-        if (enemy_status[i][j] > 0)
-          enemy_status[i][j]--;
-      battle_enemy_data_ext[i] = enemy_battle_data[i].hp;
-      if (enemy_battle_data[i].hp > 0) {
-        for (j = 0; j <= 15; j++) {
-          if (enemy_poison_status[i][j].poisonID > 0)
-            process_Script(i, &enemy_poison_status[i][j].poisonScript);
-        }
-        hpLost = battle_enemy_data_ext[i] - enemy_battle_data[i].hp;
-        if (hpLost > 0) {
-          add_damage_number(enemy_battle_data[i].x, enemy_battle_data[i].y - 110, hpLost, 1);
-          theurgyType = 10;
-        }
-        if (enemy_battle_data[i].hp <= 0)
-          npc_sprite_num = -1;
-      }
-    }
-    for (i = 0; i <= enemy_pos_count; i++) {
-      for (j = 0; j <= 15; j++)
-        if (player_status[i][j] > 0)
-          player_status[i][j]--;
-      k = party[i].role;
-      damage_target_hp = playerRoles(k, 9);
-      battle_select_idx = playerRoles(k, 10);
-      if (damage_target_hp > 0) {
-        player_status[i][4] = 0;
-        for (j = 0; j <= 15; j++) {
-          if (poison_status[i][j].poisonID > 0)
-            process_Script(i, &poison_status[i][j].poisonScript);
-        }
-        hpLost = damage_target_hp - playerRoles(k, 9);
-        if (hpLost > 0) {
-          add_damage_number(player_battle_sprite[i].x, player_battle_sprite[i].y - 70, hpLost, 1);
-          theurgyType = 10;
-        }
-        hpLost = battle_select_idx - playerRoles(k, 10);
-        if (hpLost > 0) {
-          add_damage_number(player_battle_sprite[i].x, player_battle_sprite[i].y - 62, hpLost, 2);
-          theurgyType = 10;
-        }
-      }
-      battle_role_data_ext[i][0] = playerRoles(k, 9);
-      battle_role_data_ext[i][1] = playerRoles(k, 10);
-      playerRoles(k, 9) = damage_target_hp;
-      playerRoles(k, 10) = battle_select_idx;
-    }
-    draw_battle_scene(theurgyType, 0);
-    for (i = 0; i <= 4; i++)
-      battle_enemy_data_ext[i] = enemy_battle_data[i].hp;
-    for (i = 0; i <= enemy_pos_count; i++) {
-      k = party[i].role;
-      playerRoles(k, 9) = battle_role_data_ext[i][0];
-      playerRoles(k, 10) = battle_role_data_ext[i][1];
-    }
-    if (battle_select_max > 0) {
-      battle_select_max--;
-      if (battle_select_max == 0)
-        npc_sprite_num = 1;
-    }
-    if (npc_sprite_num) {
-      play_rng_effect(1, 65);
-      npc_sprite_num = 0;
-    }
-    PAL_ReadKey(key_state_array);
-    if (auto_battle_flag <= 2) {
-      if (key_state_array[1] > 0 || key_state_array[82] > 0)
-        auto_battle_flag = 0;
-    }
-    DoEvents_check_exit();
   }
 
 L_00420C0E:
@@ -6761,24 +6816,32 @@ void process_scripts(int16_t eventObjID, uint16_t *scriptEntry, int16_t opcode, 
     return;
   case 16:
     stepSize = 3;
-    goto L_walk_to_pos;
+  L_walk_to_pos:
+    targetX = (((*operand1) + (*operand1)) + (*operand3)) * 16;
+    targetY = (((*operand2) + (*operand2)) + (*operand3)) * 8;
+    tmp2 = targetX - npc_display_data[eventObjID].x;
+    tmp3 = targetY - npc_display_data[eventObjID].y;
+    if ((VB_Abs(tmp2) >= (stepSize + stepSize)) || (VB_Abs(tmp3) >= stepSize)) {
+      PAL_ExTF((uint16_t *)&npc_display_data[eventObjID].direction, tmp2, tmp3);
+      npc_walk_one_step(eventObjID, stepSize);
+    } else {
+      npc_display_data[eventObjID].x = targetX;
+      npc_display_data[eventObjID].y = targetY;
+    }
+    if (npc_display_data[eventObjID].x != targetX || npc_display_data[eventObjID].y != targetY) {
+      *scriptEntry = (uint16_t)(*scriptEntry - 1);
+    } else {
+      npc_display_data[eventObjID].currentFrame = 0;
+    }
+    return;
   case 17:
     if ((eventObjID & 1) == mutex_shaking) {
       stepSize = 2;
       goto L_walk_to_pos;
+    } else {
+      *scriptEntry = (uint16_t)(*scriptEntry - 1);
+      return;
     }
-    *scriptEntry = (uint16_t)(*scriptEntry - 1);
-    return;
-  case 124:
-    if (mutex_shaking) {
-      stepSize = 4;
-      goto L_walk_to_pos;
-    }
-    *scriptEntry = (uint16_t)(*scriptEntry - 1);
-    return;
-  case 130:
-    stepSize = 8;
-    goto L_walk_to_pos;
   case 18:
     if ((*operand1) <= 0)
       eventObjIdx = eventObjID;
@@ -6797,11 +6860,11 @@ void process_scripts(int16_t eventObjID, uint16_t *scriptEntry, int16_t opcode, 
     if (eventObjIdx > 0 && eventObjIdx <= curr_scene_event_count) {
       npc_display_data[eventObjIdx].x = (*operand2);
       npc_display_data[eventObjIdx].y = (*operand3);
-      return;
+    } else {
+      save_temp_buf[0] = (*operand2);
+      save_temp_buf[1] = (*operand3);
+      PAL_CopyMem(events + ((*operand1) - 1) * 32 + 2, save_temp_buf, 4);
     }
-    save_temp_buf[0] = (*operand2);
-    save_temp_buf[1] = (*operand3);
-    PAL_CopyMem(events + ((*operand1) - 1) * 32 + 2, save_temp_buf, 4);
     return;
   case 20:
     npc_display_data[eventObjID].currentFrame = (*operand1);
@@ -6812,21 +6875,23 @@ void process_scripts(int16_t eventObjID, uint16_t *scriptEntry, int16_t opcode, 
     party[(*operand3)].frame = (RPG_team_direction * 3) + (*operand2);
     return;
   case 22:
-    if ((*operand1) == 0)
+    if ((*operand1) == 0) {
       return;
-    if ((*operand1) < 0)
-      eventObjIdx = eventObjID;
-    else
-      eventObjIdx = (*operand1) - scenes[RPG_curr_scene].eventObjectIndex;
-    if (eventObjIdx > 0 && eventObjIdx <= curr_scene_event_count) {
-      npc_display_data[eventObjIdx].direction = (*operand2);
-      npc_display_data[eventObjIdx].currentFrame = (*operand3);
+    } else {
+      if ((*operand1) < 0)
+        eventObjIdx = eventObjID;
+      else
+        eventObjIdx = (*operand1) - scenes[RPG_curr_scene].eventObjectIndex;
+      if (eventObjIdx > 0 && eventObjIdx <= curr_scene_event_count) {
+        npc_display_data[eventObjIdx].direction = (*operand2);
+        npc_display_data[eventObjIdx].currentFrame = (*operand3);
+      } else {
+        save_temp_buf[0] = (*operand2);
+        save_temp_buf[1] = (*operand3);
+        PAL_CopyMem(events + ((*operand1) - 1) * 32 + 20, save_temp_buf, 4);
+      }
       return;
     }
-    save_temp_buf[0] = (*operand2);
-    save_temp_buf[1] = (*operand3);
-    PAL_CopyMem(events + ((*operand1) - 1) * 32 + 20, save_temp_buf, 4);
-    return;
   case 23:
     equipment_effect(roleID, (*operand1), (*operand2)) = (*operand3);
     return;
@@ -6846,13 +6911,11 @@ void process_scripts(int16_t eventObjID, uint16_t *scriptEntry, int16_t opcode, 
       attrIdx = (*operand1);
       if (attrIdx == 1) {
         player_battle_sprite[eventObjID].spriteNum = (*operand2);
-        return;
-      }
-      if (attrIdx == 65) {
+      } else if (attrIdx == 65) {
         player_battle_sprite[eventObjID].equipID = (*operand2);
-        return;
+      } else {
+        playerRoles(roleID, (*operand1)) = (*operand2);
       }
-      playerRoles(roleID, (*operand1)) = (*operand2);
       return;
     }
     playerRoles((*operand3) - 1, (*operand1)) = (*operand2);
@@ -6935,9 +6998,9 @@ void process_scripts(int16_t eventObjID, uint16_t *scriptEntry, int16_t opcode, 
   case 30:
     if ((int16_t)(*operand1) < 0 && ((int32_t)RPG_money + (int16_t)(*operand1)) < 0) {
       *scriptEntry = (uint16_t)((*operand2) - 1);
-      return;
+    } else {
+      RPG_money += (int16_t)(*operand1);
     }
-    RPG_money += (int16_t)(*operand1);
     return;
   case 31:
     compact_inventory();
@@ -6950,9 +7013,9 @@ void process_scripts(int16_t eventObjID, uint16_t *scriptEntry, int16_t opcode, 
       (*operand2) = 1;
     if (count_item_total((*operand1)) < (*operand2) && (*operand3) != 0) {
       *scriptEntry = (uint16_t)((*operand3) - 1);
-      return;
+    } else {
+      remove_inventory_item((*operand1), (*operand2));
     }
-    remove_inventory_item((*operand1), (*operand2));
     return;
   case 33:
     if ((*operand1)) {
@@ -7010,31 +7073,35 @@ void process_scripts(int16_t eventObjID, uint16_t *scriptEntry, int16_t opcode, 
     }
     return;
   case 36:
-    if ((*operand1) == 0)
+    if ((*operand1) == 0) {
       return;
-    if ((*operand1) < 0)
-      eventObjIdx = eventObjID;
-    else
-      eventObjIdx = (*operand1) - scenes[RPG_curr_scene].eventObjectIndex;
-    if (eventObjIdx > 0 && eventObjIdx <= curr_scene_event_count) {
-      npc_display_data[eventObjIdx].autoScript = (*operand2);
+    } else {
+      if ((*operand1) < 0)
+        eventObjIdx = eventObjID;
+      else
+        eventObjIdx = (*operand1) - scenes[RPG_curr_scene].eventObjectIndex;
+      if (eventObjIdx > 0 && eventObjIdx <= curr_scene_event_count) {
+        npc_display_data[eventObjIdx].autoScript = (*operand2);
+      } else {
+        PAL_CopyMem(events + ((*operand1) - 1) * 32 + 10, operand2, 2);
+      }
       return;
     }
-    PAL_CopyMem(events + ((*operand1) - 1) * 32 + 10, operand2, 2);
-    return;
   case 37:
-    if ((*operand1) == 0)
+    if ((*operand1) == 0) {
       return;
-    if ((*operand1) < 0)
-      eventObjIdx = eventObjID;
-    else
-      eventObjIdx = (*operand1) - scenes[RPG_curr_scene].eventObjectIndex;
-    if (eventObjIdx > 0 && eventObjIdx <= curr_scene_event_count) {
-      npc_display_data[eventObjIdx].triggerScript = (*operand2);
+    } else {
+      if ((*operand1) < 0)
+        eventObjIdx = eventObjID;
+      else
+        eventObjIdx = (*operand1) - scenes[RPG_curr_scene].eventObjectIndex;
+      if (eventObjIdx > 0 && eventObjIdx <= curr_scene_event_count) {
+        npc_display_data[eventObjIdx].triggerScript = (*operand2);
+      } else {
+        PAL_CopyMem(events + ((*operand1) - 1) * 32 + 8, operand2, 2);
+      }
       return;
     }
-    PAL_CopyMem(events + ((*operand1) - 1) * 32 + 8, operand2, 2);
-    return;
   case 38:
     buy_item_menu((*operand1));
     return;
@@ -7060,7 +7127,7 @@ void process_scripts(int16_t eventObjID, uint16_t *scriptEntry, int16_t opcode, 
             enemy_poison_status[j][i].poisonID = (*operand2);
             enemy_poison_status[j][i].poisonScript = objects[(*operand2)].data[4];
             process_Script(j, &enemy_poison_status[j][i].poisonScript);
-            goto L_op40_done;
+            break;
           }
         }
       }
@@ -7086,7 +7153,7 @@ void process_scripts(int16_t eventObjID, uint16_t *scriptEntry, int16_t opcode, 
             poison_status[j][i].poisonID = (*operand2);
             poison_status[j][i].poisonScript = objects[(*operand2)].data[2];
             process_Script(j, &poison_status[j][i].poisonScript);
-            goto L_op41_done;
+            break;
           }
         }
       }
@@ -7144,8 +7211,7 @@ void process_scripts(int16_t eventObjID, uint16_t *scriptEntry, int16_t opcode, 
         redraw_hp_mp_flag = 0;
       }
       return;
-    }
-    if (((*operand1) > 4) || (player_status[eventObjID][(*operand1)] <= 0)) {
+    } else if (((*operand1) > 4) || (player_status[eventObjID][(*operand1)] <= 0)) {
       if (player_status[eventObjID][(*operand1)] < (*operand2))
         player_status[eventObjID][(*operand1)] = (*operand2);
     }
@@ -7155,9 +7221,8 @@ void process_scripts(int16_t eventObjID, uint16_t *scriptEntry, int16_t opcode, 
     if ((float)objects[enemy_battle_data[eventObjID].objectID].data[1] < VB_Int(rng * 10.0)) {
       if ((*operand2) > 0)
         enemy_status[eventObjID][(*operand1)] = (*operand2);
-    } else {
-      if ((*operand3) != 0)
-        *scriptEntry = (uint16_t)((*operand3) - 1);
+    } else if ((*operand3) != 0) {
+      *scriptEntry = (uint16_t)((*operand3) - 1);
     }
     return;
   case 47:
@@ -7250,9 +7315,7 @@ void process_scripts(int16_t eventObjID, uint16_t *scriptEntry, int16_t opcode, 
   case 58:
     if (battle_param) {
       flee_from_battle(eventObjID, &(int16_t){-1});
-      return;
-    }
-    if ((*operand1))
+    } else if ((*operand1))
       *scriptEntry = (uint16_t)((*operand1) - 1);
     return;
   case 59:
@@ -7308,22 +7371,25 @@ void process_scripts(int16_t eventObjID, uint16_t *scriptEntry, int16_t opcode, 
     stepSize = 2;
     goto L_walk_to_pos_68;
   case 64:
-    if ((*operand1) == 0)
+    if ((*operand1) == 0) {
       return;
-    if ((*operand1) < 0)
-      eventObjIdx = eventObjID;
-    else
-      eventObjIdx = (*operand1) - scenes[RPG_curr_scene].eventObjectIndex;
-    if (eventObjIdx > 0 && eventObjIdx <= curr_scene_event_count) {
-      npc_display_data[eventObjIdx].triggerMode = (*operand2);
+    } else {
+      if ((*operand1) < 0)
+        eventObjIdx = eventObjID;
+      else
+        eventObjIdx = (*operand1) - scenes[RPG_curr_scene].eventObjectIndex;
+      if (eventObjIdx > 0 && eventObjIdx <= curr_scene_event_count) {
+        npc_display_data[eventObjIdx].triggerMode = (*operand2);
+      } else {
+        PAL_CopyMem(events + ((*operand1) - 1) * 32 + 14, operand2, 2);
+      }
       return;
     }
-    PAL_CopyMem(events + ((*operand1) - 1) * 32 + 14, operand2, 2);
-    return;
   case 65:
     redraw_hp_mp_flag = 0;
     return;
-  case 66: {
+  case 66:
+  L_004234FA: {
     int16_t enemyIdx = eventObjID;
     if ((*operand3) > 0 && (*operand3) <= 5)
       enemyIdx = (*operand3) - 1;
@@ -7347,7 +7413,36 @@ void process_scripts(int16_t eventObjID, uint16_t *scriptEntry, int16_t opcode, 
     return;
   case 68:
     stepSize = 4;
-    goto L_walk_to_pos_68;
+  L_walk_to_pos_68:
+    tmp = stepSize + stepSize;
+    targetX = (((*operand1) + (*operand1)) + (*operand3)) * 16;
+    targetY = (((*operand2) + (*operand2)) + (*operand3)) * 8;
+    for (;;) {
+      tmp2 = targetX - party_abs_x;
+      tmp3 = targetY - party_abs_y;
+      if ((tmp2 | tmp3) == 0)
+        return;
+      PAL_ExTF((uint16_t *)&walkDir, tmp2, tmp3);
+      if (tmp2 != 0)
+        tmp2 = key_pressed_flags[walkDir] * tmp;
+      if (tmp3 != 0)
+        tmp3 = key_direction_flags[walkDir] * stepSize;
+      x_off = party_abs_x;
+      y_off = party_abs_y;
+      party_abs_x += tmp2;
+      party_abs_y += tmp3;
+      viewport_x_bak = RPG_viewport_x;
+      viewport_y_bak = RPG_viewport_y;
+      RPG_viewport_x = party_abs_x - team_abstract_x;
+      RPG_viewport_y = party_abs_y - team_abstract_y;
+      npc_display_data[eventObjID].direction = walkDir;
+      npc_display_data[eventObjID].x += tmp2;
+      npc_display_data[eventObjID].y += tmp3;
+      update_trail_data();
+      process_event_objects(0);
+      update_viewport_scroll();
+      check_in_battle(1);
+    }
   case 69:
     RPG_battle_music_number = (*operand1);
     return;
@@ -7380,18 +7475,20 @@ void process_scripts(int16_t eventObjID, uint16_t *scriptEntry, int16_t opcode, 
   case 72:
     return;
   case 73:
-    if ((*operand1) == 0)
+    if ((*operand1) == 0) {
       return;
-    if ((*operand1) < 0)
-      eventObjIdx = eventObjID;
-    else
-      eventObjIdx = (*operand1) - scenes[RPG_curr_scene].eventObjectIndex;
-    if (eventObjIdx > 0 && eventObjIdx <= curr_scene_event_count) {
-      npc_display_data[eventObjIdx].state = (*operand2);
+    } else {
+      if ((*operand1) < 0)
+        eventObjIdx = eventObjID;
+      else
+        eventObjIdx = (*operand1) - scenes[RPG_curr_scene].eventObjectIndex;
+      if (eventObjIdx > 0 && eventObjIdx <= curr_scene_event_count) {
+        npc_display_data[eventObjIdx].state = (*operand2);
+      } else {
+        PAL_CopyMem(events + ((*operand1) - 1) * 32 + 12, operand2, 2);
+      }
       return;
     }
-    PAL_CopyMem(events + ((*operand1) - 1) * 32 + 12, operand2, 2);
-    return;
   case 74:
     RPG_battle_scene_number = (*operand1);
     return;
@@ -7478,13 +7575,13 @@ void process_scripts(int16_t eventObjID, uint16_t *scriptEntry, int16_t opcode, 
       fade_palette_to(1);
       PAL_Rblk(0, 0, 319, 199, 16);
       PAL_IntPalate((uint8_t *)&palette_data[RPG_color_begin_ptr]);
-      return;
+    } else {
+      PAL_FuPalate((uint16_t)((*operand1) - 1), (uint8_t *)&palette_data[768],
+                   (const uint8_t *)&palette_data[RPG_color_begin_ptr]);
+      PAL_CopyMem(&palette_data[RPG_color_begin_ptr], &palette_data[768], 768);
+      if (palette_fade_active == 0)
+        PAL_IntPalate((uint8_t *)&palette_data[RPG_color_begin_ptr]);
     }
-    PAL_FuPalate((uint16_t)((*operand1) - 1), (uint8_t *)&palette_data[768],
-                 (const uint8_t *)&palette_data[RPG_color_begin_ptr]);
-    PAL_CopyMem(&palette_data[RPG_color_begin_ptr], &palette_data[768], 768);
-    if (palette_fade_active == 0)
-      PAL_IntPalate((uint8_t *)&palette_data[RPG_color_begin_ptr]);
     return;
   case 80:
     var1 = (*operand1);
@@ -7711,14 +7808,14 @@ void process_scripts(int16_t eventObjID, uint16_t *scriptEntry, int16_t opcode, 
       npc_display_data[eventObjIdx].x += (*operand2);
       npc_display_data[eventObjIdx].y += (*operand3);
       npc_walk_one_step(eventObjIdx, 0);
-      return;
+    } else {
+      eventOffset = ((*operand1) * 32) - 32;
+      PAL_CopyMem(&npc_display_data[0].vanishTime, events + eventOffset, 32);
+      npc_display_data[0].x += (*operand2);
+      npc_display_data[0].y += (*operand3);
+      npc_walk_one_step(0, 0);
+      PAL_CopyMem(events + eventOffset, &npc_display_data[0].vanishTime, 32);
     }
-    eventOffset = ((*operand1) * 32) - 32;
-    PAL_CopyMem(&npc_display_data[0].vanishTime, events + eventOffset, 32);
-    npc_display_data[0].x += (*operand2);
-    npc_display_data[0].y += (*operand3);
-    npc_walk_one_step(0, 0);
-    PAL_CopyMem(events + eventOffset, &npc_display_data[0].vanishTime, 32);
     return;
   case 109:
     if ((*operand1) > 0) {
@@ -7753,10 +7850,30 @@ void process_scripts(int16_t eventObjID, uint16_t *scriptEntry, int16_t opcode, 
       npc_display_data[eventObjID].state = (*operand2);
     return;
   case 112:
-  case 122:
-  case 123:
-    walkSpeed = (opcode == 112) ? 2 : (opcode == 122) ? 4 : 8;
-    goto L_walk_party;
+    walkSpeed = 2;
+  L_walk_party:
+    do {
+      destX = (((*operand1) + (*operand1)) + (*operand3)) * 16;
+      destY = (((*operand2) + (*operand2)) + (*operand3)) * 8;
+      x_off = party_abs_x;
+      y_off = party_abs_y;
+      tmp2 = destX - party_abs_x;
+      tmp3 = destY - party_abs_y;
+      if ((tmp2 | tmp3) == 0)
+        break;
+      PAL_ExTF((uint16_t *)&RPG_team_direction, tmp2, tmp3);
+      viewport_x_bak = RPG_viewport_x;
+      viewport_y_bak = RPG_viewport_y;
+      RPG_viewport_x += (key_pressed_flags[RPG_team_direction] * walkSpeed) * 2;
+      RPG_viewport_y += key_direction_flags[RPG_team_direction] * walkSpeed;
+      update_party_position();
+      process_event_objects(0);
+      update_viewport_scroll();
+      check_in_battle(1);
+    } while (destX != party_abs_x || destY != party_abs_y);
+    for (j = 0; j <= RPG_team_number; j++)
+      party[j].frame = trail[j].direction * 3;
+    return;
   case 113:
     RPG_screen_wave_grade = (*operand1);
     wave_progression = (*operand2);
@@ -7770,9 +7887,9 @@ void process_scripts(int16_t eventObjID, uint16_t *scriptEntry, int16_t opcode, 
       npc_display_data[eventObjIdx].spriteNum = (*operand2);
       if ((*operand3))
         load_npc_sprites();
-      return;
+    } else {
+      PAL_CopyMem(events + ((*operand1) - 1) * 32 + 16, operand2, 2);
     }
-    PAL_CopyMem(events + ((*operand1) - 1) * 32 + 16, operand2, 2);
     return;
   case 115:
     if ((*operand1) <= 0)
@@ -7829,6 +7946,20 @@ void process_scripts(int16_t eventObjID, uint16_t *scriptEntry, int16_t opcode, 
       }
     }
     return;
+  case 122:
+    walkSpeed = 4;
+    goto L_walk_party;
+  case 123:
+    walkSpeed = 8;
+    goto L_walk_party;
+  case 124:
+    if (mutex_shaking) {
+      stepSize = 4;
+      goto L_walk_to_pos;
+    } else {
+      *scriptEntry = (uint16_t)(*scriptEntry - 1);
+      return;
+    }
   case 125:
     if ((*operand1) <= 0)
       eventObjIdx = eventObjID;
@@ -7837,13 +7968,13 @@ void process_scripts(int16_t eventObjID, uint16_t *scriptEntry, int16_t opcode, 
     if (eventObjIdx > 0 && eventObjIdx <= curr_scene_event_count) {
       npc_display_data[eventObjIdx].x += (*operand2);
       npc_display_data[eventObjIdx].y += (*operand3);
-      return;
+    } else {
+      eventOffset = ((*operand1) * 32) - 32;
+      PAL_CopyMem(&npc_display_data[0].vanishTime, events + eventOffset, 32);
+      npc_display_data[0].x += (*operand2);
+      npc_display_data[0].y += (*operand3);
+      PAL_CopyMem(events + eventOffset, &npc_display_data[0].vanishTime, 32);
     }
-    eventOffset = ((*operand1) * 32) - 32;
-    PAL_CopyMem(&npc_display_data[0].vanishTime, events + eventOffset, 32);
-    npc_display_data[0].x += (*operand2);
-    npc_display_data[0].y += (*operand3);
-    PAL_CopyMem(events + eventOffset, &npc_display_data[0].vanishTime, 32);
     return;
   case 126:
     if ((*operand1) <= 0)
@@ -7852,12 +7983,12 @@ void process_scripts(int16_t eventObjID, uint16_t *scriptEntry, int16_t opcode, 
       eventObjIdx = (*operand1) - scenes[RPG_curr_scene].eventObjectIndex;
     if (eventObjIdx > 0 && eventObjIdx <= curr_scene_event_count) {
       npc_display_data[eventObjIdx].layer = (*operand2);
-      return;
+    } else {
+      eventOffset = ((*operand1) * 32) - 32;
+      PAL_CopyMem(&npc_display_data[0].vanishTime, events + eventOffset, 32);
+      npc_display_data[0].layer = (*operand2);
+      PAL_CopyMem(events + eventOffset, &npc_display_data[0].vanishTime, 32);
     }
-    eventOffset = ((*operand1) * 32) - 32;
-    PAL_CopyMem(&npc_display_data[0].vanishTime, events + eventOffset, 32);
-    npc_display_data[0].layer = (*operand2);
-    PAL_CopyMem(events + eventOffset, &npc_display_data[0].vanishTime, 32);
     return;
   case 127:
     if ((*operand3) == -1 && (*operand1) == 0 && (*operand2) == 0) {
@@ -7866,12 +7997,11 @@ void process_scripts(int16_t eventObjID, uint16_t *scriptEntry, int16_t opcode, 
       RPG_viewport_x = party_abs_x - team_abstract_x;
       RPG_viewport_y = party_abs_y - team_abstract_y;
       var3 = 0;
-      goto L_00425B08;
+    } else {
+      var3 = (*operand3);
+      if (var3 <= 0)
+        var3 = 1;
     }
-    var3 = (*operand3);
-    if (var3 <= 0)
-      var3 = 1;
-  L_00425B08:
     for (j = 1; j <= (uint16_t)var3; j++) {
       viewport_x_bak = RPG_viewport_x;
       viewport_y_bak = RPG_viewport_y;
@@ -7941,6 +8071,9 @@ void process_scripts(int16_t eventObjID, uint16_t *scriptEntry, int16_t opcode, 
       *scriptEntry = (uint16_t)((*operand3) - 1);
     }
     return;
+  case 130:
+    stepSize = 8;
+    goto L_walk_to_pos;
   case 131:
     redraw_hp_mp_flag = 0;
     stepSize = ((*operand2) * 32) + 16;
@@ -8081,20 +8214,22 @@ void process_scripts(int16_t eventObjID, uint16_t *scriptEntry, int16_t opcode, 
     cross_fade_out(operand1);
     return;
   case 148:
-    if ((*operand1) == 0)
+    if ((*operand1) == 0) {
       return;
-    if ((*operand1) < 0)
-      eventObjIdx = eventObjID;
-    else
-      eventObjIdx = (*operand1) - scenes[RPG_curr_scene].eventObjectIndex;
-    if (eventObjIdx <= 0 || eventObjIdx > curr_scene_event_count) {
-      eventObjIdx = 0;
-      PAL_CopyMem(&npc_display_data[0].vanishTime, events + ((*operand1) - 1) * 32, 32);
+    } else {
+      if ((*operand1) < 0)
+        eventObjIdx = eventObjID;
+      else
+        eventObjIdx = (*operand1) - scenes[RPG_curr_scene].eventObjectIndex;
+      if (eventObjIdx <= 0 || eventObjIdx > curr_scene_event_count) {
+        eventObjIdx = 0;
+        PAL_CopyMem(&npc_display_data[0].vanishTime, events + ((*operand1) - 1) * 32, 32);
+      }
+      if (npc_display_data[eventObjIdx].state == (*operand2)) {
+        *scriptEntry = (uint16_t)((*operand3) - 1);
+      }
+      return;
     }
-    if (npc_display_data[eventObjIdx].state == (*operand2)) {
-      *scriptEntry = (uint16_t)((*operand3) - 1);
-    }
-    return;
   case 149:
     if (RPG_curr_scene == (*operand1)) {
       *scriptEntry = (uint16_t)((*operand2) - 1);
@@ -8128,22 +8263,23 @@ void process_scripts(int16_t eventObjID, uint16_t *scriptEntry, int16_t opcode, 
       (*operand1) = RPG_curr_scene;
       scenes[(*operand1)].mapNum = (*operand2);
       get_scene_map_source((*operand1));
-      return;
+    } else {
+      scenes[(*operand1)].mapNum = (*operand2);
     }
-    scenes[(*operand1)].mapNum = (*operand2);
     return;
   case 154:
-    if ((*operand1) == 0 || (*operand2) == 0)
-      return;
-    eventObjIdx = (*operand1) - scenes[RPG_curr_scene].eventObjectIndex;
-    eventIdx2 = (*operand2) - scenes[RPG_curr_scene].eventObjectIndex;
-    if (eventObjIdx > 0 && eventObjIdx <= curr_scene_event_count) {
-      for (j = (uint16_t)eventObjIdx; (int16_t)j <= eventIdx2; j++)
-        npc_display_data[j].state = (*operand3);
+    if (!((*operand1) == 0 || (*operand2) == 0)) {
+      eventObjIdx = (*operand1) - scenes[RPG_curr_scene].eventObjectIndex;
+      eventIdx2 = (*operand2) - scenes[RPG_curr_scene].eventObjectIndex;
+      if (eventObjIdx > 0 && eventObjIdx <= curr_scene_event_count) {
+        for (j = (uint16_t)eventObjIdx; (int16_t)j <= eventIdx2; j++)
+          npc_display_data[j].state = (*operand3);
+      } else {
+        for (j = (*operand1); j <= (*operand2); j++)
+          PAL_CopyMem(events + (j - 1) * 32 + 12, operand3, 2);
+      }
       return;
     }
-    for (j = (*operand1); j <= (*operand2); j++)
-      PAL_CopyMem(events + (j - 1) * 32 + 12, operand3, 2);
     return;
   case 155:
     multi_event_state = (*operand1);
@@ -8155,29 +8291,30 @@ void process_scripts(int16_t eventObjID, uint16_t *scriptEntry, int16_t opcode, 
       draw_battle_row_sprite();
       multi_event_state = 0;
       return;
-    }
-    if ((int16_t)(*operand2) < 0) {
-      PAL_CopyMem(screen_buf, global_buf_1, 64000);
-      curr_scene_id_cache = 0;
-      draw_battle_row_sprite();
-      PAL_CopyMem((uint8_t *)mgo_frame_offsets, global_buf_1, 64000);
-      PAL_CopyMem(global_buf_1, screen_buf, 64000);
     } else {
-      read_file_and_close("FBP.MKF", (*operand2));
-      if (multi_event_state == 1) {
-        PAL_Unpak(global_buf_2, global_buf_1);
-      } else {
+      if ((int16_t)(*operand2) < 0) {
+        PAL_CopyMem(screen_buf, global_buf_1, 64000);
         curr_scene_id_cache = 0;
-        PAL_Unpak(global_buf_2, (uint8_t *)mgo_frame_offsets);
+        draw_battle_row_sprite();
+        PAL_CopyMem((uint8_t *)mgo_frame_offsets, global_buf_1, 64000);
+        PAL_CopyMem(global_buf_1, screen_buf, 64000);
+      } else {
+        read_file_and_close("FBP.MKF", (*operand2));
+        if (multi_event_state == 1) {
+          PAL_Unpak(global_buf_2, global_buf_1);
+        } else {
+          curr_scene_id_cache = 0;
+          PAL_Unpak(global_buf_2, (uint8_t *)mgo_frame_offsets);
+        }
       }
+      if ((*operand3) == 0)
+        (*operand3) = 2;
+      if (multi_event_state == 2) {
+        multi_event_param = (*operand3);
+        multi_event_param_2 = 0;
+      }
+      return;
     }
-    if ((*operand3) == 0)
-      (*operand3) = 2;
-    if (multi_event_state == 2) {
-      multi_event_param = (*operand3);
-      multi_event_param_2 = 0;
-    }
-    return;
   case 156:
     if ((*operand1) == 0)
       (*operand1) = 1;
@@ -8214,9 +8351,7 @@ void process_scripts(int16_t eventObjID, uint16_t *scriptEntry, int16_t opcode, 
         draw_battle_scene(1, 0);
       }
       init_enemy_positions();
-      return;
-    }
-    if ((*operand2) != 0) {
+    } else if ((*operand2) != 0) {
       *scriptEntry = (uint16_t)((*operand2) - 1);
       redraw_hp_mp_flag = 0;
     }
@@ -8242,9 +8377,7 @@ void process_scripts(int16_t eventObjID, uint16_t *scriptEntry, int16_t opcode, 
         player_hit_flags[j] = 0;
       play_rng_effect(1, 42);
       enemy_battle_data[eventObjID].direction = enemy_battle_data[eventObjID].flag;
-      return;
-    }
-    if ((*operand2) != 0) {
+    } else if ((*operand2) != 0) {
       *scriptEntry = (uint16_t)((*operand2) - 1);
       redraw_hp_mp_flag = 0;
     }
@@ -8275,9 +8408,7 @@ void process_scripts(int16_t eventObjID, uint16_t *scriptEntry, int16_t opcode, 
         player_hit_flags[j] = 0;
       play_rng_effect(1, 42);
       enemy_battle_data[eventObjID].direction = enemy_battle_data[eventObjID].flag;
-      return;
-    }
-    if ((*operand3) != 0) {
+    } else if ((*operand3) != 0) {
       *scriptEntry = (uint16_t)((*operand3) - 1);
       redraw_hp_mp_flag = 0;
     }
@@ -8354,96 +8485,6 @@ void process_scripts(int16_t eventObjID, uint16_t *scriptEntry, int16_t opcode, 
   default:
     return;
   }
-
-L_walk_to_pos:
-  targetX = (((*operand1) + (*operand1)) + (*operand3)) * 16;
-  targetY = (((*operand2) + (*operand2)) + (*operand3)) * 8;
-  tmp2 = targetX - npc_display_data[eventObjID].x;
-  tmp3 = targetY - npc_display_data[eventObjID].y;
-  if ((VB_Abs(tmp2) >= (stepSize + stepSize)) || (VB_Abs(tmp3) >= stepSize)) {
-    PAL_ExTF((uint16_t *)&npc_display_data[eventObjID].direction, tmp2, tmp3);
-    npc_walk_one_step(eventObjID, stepSize);
-  } else {
-    npc_display_data[eventObjID].x = targetX;
-    npc_display_data[eventObjID].y = targetY;
-  }
-  if (npc_display_data[eventObjID].x != targetX || npc_display_data[eventObjID].y != targetY) {
-    *scriptEntry = (uint16_t)(*scriptEntry - 1);
-  } else {
-    npc_display_data[eventObjID].currentFrame = 0;
-  }
-  return;
-
-L_walk_to_pos_68:
-  tmp = stepSize + stepSize;
-  targetX = (((*operand1) + (*operand1)) + (*operand3)) * 16;
-  targetY = (((*operand2) + (*operand2)) + (*operand3)) * 8;
-  do {
-    tmp2 = targetX - party_abs_x;
-    tmp3 = targetY - party_abs_y;
-    if ((tmp2 | tmp3) != 0) {
-      PAL_ExTF((uint16_t *)&walkDir, tmp2, tmp3);
-      if (tmp2 != 0)
-        tmp2 = key_pressed_flags[walkDir] * tmp;
-      if (tmp3 != 0)
-        tmp3 = key_direction_flags[walkDir] * stepSize;
-      x_off = party_abs_x;
-      y_off = party_abs_y;
-      party_abs_x += tmp2;
-      party_abs_y += tmp3;
-      viewport_x_bak = RPG_viewport_x;
-      viewport_y_bak = RPG_viewport_y;
-      RPG_viewport_x = party_abs_x - team_abstract_x;
-      RPG_viewport_y = party_abs_y - team_abstract_y;
-      npc_display_data[eventObjID].direction = walkDir;
-      npc_display_data[eventObjID].x += tmp2;
-      npc_display_data[eventObjID].y += tmp3;
-      update_trail_data();
-      process_event_objects(0);
-      update_viewport_scroll();
-      check_in_battle(1);
-    }
-  } while ((tmp2 | tmp3) != 0);
-  return;
-
-L_walk_party:
-  destX = (((*operand1) + (*operand1)) + (*operand3)) * 16;
-  destY = (((*operand2) + (*operand2)) + (*operand3)) * 8;
-  x_off = party_abs_x;
-  y_off = party_abs_y;
-  tmp2 = destX - party_abs_x;
-  tmp3 = destY - party_abs_y;
-  if ((tmp2 | tmp3) != 0) {
-    PAL_ExTF((uint16_t *)&RPG_team_direction, tmp2, tmp3);
-    viewport_x_bak = RPG_viewport_x;
-    viewport_y_bak = RPG_viewport_y;
-    RPG_viewport_x += (key_pressed_flags[RPG_team_direction] * walkSpeed) * 2;
-    RPG_viewport_y += key_direction_flags[RPG_team_direction] * walkSpeed;
-    update_party_position();
-    process_event_objects(0);
-    update_viewport_scroll();
-    check_in_battle(1);
-    if (destX != party_abs_x || destY != party_abs_y)
-      goto L_walk_party;
-  }
-  for (j = 0; j <= RPG_team_number; j++)
-    party[j].frame = trail[j].direction * 3;
-  return;
-
-L_004234FA: {
-  int16_t enemyIdx = eventObjID;
-  if ((*operand3) > 0 && (*operand3) <= 5)
-    enemyIdx = (*operand3) - 1;
-  if ((*operand3) < 0)
-    enemyIdx = VB_Int(VB_rtcRandomNext() * (float)enemy_max_id);
-  while (enemy_battle_data[enemyIdx].hp <= 0)
-    enemyIdx = (enemyIdx + 1) % enemy_max_id;
-  itemObjID = objects[(*operand1)].data[0];
-  load_theurgy_image(itemObjID);
-  calc_display_theurgy(8, enemyIdx, (*operand1), (*operand2));
-  apply_enemy_poison_damage();
-}
-  return;
 }
 
 // NOTE: remake 增补入口，golden 无独立 main（进程生命周期由 VB 宿主
@@ -8484,11 +8525,11 @@ int main(int argc, char *argv[]) {
   if (PAL_InitInput_Win(0, 0) != 0)
     fprintf(stderr, "[remake] PAL_InitInput failed (unreachable in remake)\n");
 
-  fh_M_MSG = open_file("M.MSG", 0);
-  fh_RNG_MKF = open_file("RNG.MKF", 0);
-  fh_MGO_MKF = open_file("MGO.MKF", 0);
-  fh_F_MKF = open_file("F.MKF", 0);
-  fh_ABC_MKF = open_file("ABC.MKF", 0);
+  fh_M_MSG = open_file_required("M.MSG");
+  fh_RNG_MKF = open_file_required("RNG.MKF");
+  fh_MGO_MKF = open_file_required("MGO.MKF");
+  fh_F_MKF = open_file_required("F.MKF");
+  fh_ABC_MKF = open_file_required("ABC.MKF");
 
   Load_system_files();
 
@@ -8521,156 +8562,158 @@ int main(int argc, char *argv[]) {
   music_mode_init = 3;
   play_all_kinds_music(4, 1);
 
-L_title:
-  show_fbp_picture(2, 0);
-  fade_out_palette(1);
-  battle_order_array[0] = 7;
-  battle_order_array[1] = 8;
-  battle_order_array[100] = (uint16_t)-1;
-  battle_order_array[101] = (uint16_t)-1;
-  saveChoice = (int16_t)menu_select(&(int16_t){0}, 112, 84, (uint16_t)-1, 2);
-  redraw_flag = 16;
-  if (saveChoice == 1) {
-    saveChoice = check_save_file();
-    if (saveChoice < 0)
-      goto L_title;
-    LoadRPG_internal((uint16_t)(saveChoice + 1));
-    if (RPG_save_number == 0)
+  do {
+    show_fbp_picture(2, 0);
+    fade_out_palette(1);
+    battle_order_array[0] = 7;
+    battle_order_array[1] = 8;
+    battle_order_array[100] = (uint16_t)-1;
+    battle_order_array[101] = (uint16_t)-1;
+    saveChoice = (int16_t)menu_select(&(int16_t){0}, 112, 84, (uint16_t)-1, 2);
+    redraw_flag = 16;
+    if (saveChoice != 1)
       goto L_newgame;
-    redraw_flag |= 2;
+    saveChoice = check_save_file();
+  } while (saveChoice < 0);
+  LoadRPG_internal((uint16_t)(saveChoice + 1));
+  if (RPG_save_number == 0) {
+    goto L_newgame;
   } else {
-  L_newgame:
-    midi_close();
-    fade_in(1);
-    if (!pal_skip_avi())
-      PAL_PlayAvi(NULL, 3, 0);
-    scene_to_load = 1;
-    redraw_flag |= 13;
-    uint16_t *flat = (uint16_t *)&playerExp;
-    for (row = 0; row <= 4; row++) {
-      for (col = 0; col <= 7; col++) {
-        int16_t r1 = 0, r2 = 0;
-        if (col > 0) {
-          r1 = vb_round_banker_i16_d((VB_rtcRandomNext() * 2.0) + 2.0);
-          r2 = vb_round_banker_i16_d(VB_rtcRandomNext() * 20.0);
-        }
-        float expVal = (float)r2;
-        int idx = (col * MAX_PLAYER_ROLES * 4) + (row * 4);
-        memcpy(&flat[idx], &expVal, 4);
-        flat[idx + 2] = (uint16_t)(playerRoles(row, 6) + r1);
+    redraw_flag |= 2;
+    goto L_main_loop;
+  }
+
+L_newgame:
+  midi_close();
+  fade_in(1);
+  if (!pal_skip_avi())
+    PAL_PlayAvi(NULL, 3, 0);
+  scene_to_load = 1;
+  redraw_flag |= 13;
+  uint16_t *flat = (uint16_t *)&playerExp;
+  for (row = 0; row <= 4; row++) {
+    for (col = 0; col <= 7; col++) {
+      int16_t r1 = 0, r2 = 0;
+      if (col > 0) {
+        r1 = vb_round_banker_i16_d((VB_rtcRandomNext() * 2.0) + 2.0);
+        r2 = vb_round_banker_i16_d(VB_rtcRandomNext() * 20.0);
       }
+      float expVal = (float)r2;
+      int idx = (col * MAX_PLAYER_ROLES * 4) + (row * 4);
+      memcpy(&flat[idx], &expVal, 4);
+      flat[idx + 2] = (uint16_t)(playerRoles(row, 6) + r1);
     }
   }
 
+L_main_loop:
   frame_counter = 0;
   battle_viewport_x = (63 - 10) * 32;
   battle_viewport_y = (127 - 12) * 16;
   PAL_Flip();
 
 L_scene:
-  scene_transition();
-  do {
-    int16_t moving, offX, offY;
-    int32_t action;
+  for (;;) {
+    scene_transition();
+    for (;;) {
+      int16_t moving, offX, offY;
+      int32_t action;
 
-    read_direction_input(&scene_enter_flag, &scene_leave_flag);
-    action = key_pressed;
-    redraw_flag = 0;
-    process_event_objects(-1);
-    if (exit_flag != 0) {
-      // NOTE: remake 增补：退出请求放行（golden 无此分支）。
-      release_resources_exit();
-      return 0;
-    }
-    if (redraw_flag != 0)
-      goto L_scene;
-
-    PAL_ClearMenu(global_buf_2, 8192);
-    PAL_ClearTree();
-    if (scene_enter_flag == 0)
-      scene_enter_flag = -scene_leave_flag;
-    if (scene_leave_flag == 0)
-      scene_leave_flag = scene_enter_flag;
-
-    moving = 0;
-    offX = 0;
-    offY = 0;
-    if (scene_enter_flag != 0) {
-      if (load_map_data((team_abstract_x + RPG_viewport_x) + scene_enter_flag * 16,
-                        (team_abstract_y + RPG_viewport_y) + scene_leave_flag * 8, 0)) {
-        offX = (int16_t)(scene_enter_flag * 16);
-        offY = (int16_t)(scene_leave_flag * 8);
-        moving = 1;
-      }
-    }
-    PAL_ExTF((uint16_t *)&RPG_team_direction, scene_enter_flag, scene_leave_flag);
-    x_off = RPG_viewport_x + team_abstract_x;
-    y_off = RPG_viewport_y + team_abstract_y;
-    viewport_x_bak = RPG_viewport_x;
-    viewport_y_bak = RPG_viewport_y;
-    if (moving) {
-      RPG_viewport_x = RPG_viewport_x + offX;
-      RPG_viewport_y = RPG_viewport_y + offY;
-      PAL_Ffxy(&RPG_viewport_x, &RPG_viewport_y, battle_viewport_x, battle_viewport_y);
-      if (RPG_viewport_x == viewport_x_bak)
-        RPG_viewport_y = viewport_y_bak;
-      if (RPG_viewport_y == viewport_y_bak)
-        RPG_viewport_x = viewport_x_bak;
-      update_party_position();
-    } else {
-      init_walk_frames();
-    }
-    party_abs_x = team_abstract_x + RPG_viewport_x;
-    party_abs_y = team_abstract_y + RPG_viewport_y;
-
-    get_party_role_id();
-    get_sprites_curr_scene();
-    render_scene_with_rng();
-    update_viewport_scroll();
-    render_scene_and_fade(1);
-    if (!moving) {
-      PAL_Flip();
-    }
-    PAL_Flip();
-
-    switch (action) {
-    case 1:
-      process_menu();
-      break;
-    case 2:
-      check_trigger_events();
-      break;
-    case 12:
-      select_magic();
-      draw_battle_row_sprite();
-      break;
-    case 13:
-      inventory_use_menu();
-      draw_battle_row_sprite();
-      break;
-    case 14:
-      if (yes_no_menu(0, 19) == 1)
+      read_direction_input(&scene_enter_flag, &scene_leave_flag);
+      action = key_pressed;
+      redraw_flag = 0;
+      process_event_objects(-1);
+      if (exit_flag != 0) {
+        // NOTE: remake 增补：退出请求放行（golden 无此分支）。
         release_resources_exit();
-      draw_battle_row_sprite();
-      break;
-    case 15:
-      entry_stub_show_text();
-      draw_battle_row_sprite();
-      break;
-    case 16:
-      use_item_menu();
-      draw_battle_row_sprite();
-      break;
-    default:
-      break;
+        return 0;
+      }
+      if (redraw_flag != 0)
+        goto L_scene;
+
+      PAL_ClearMenu(global_buf_2, 8192);
+      PAL_ClearTree();
+      if (scene_enter_flag == 0)
+        scene_enter_flag = -scene_leave_flag;
+      if (scene_leave_flag == 0)
+        scene_leave_flag = scene_enter_flag;
+
+      moving = 0;
+      offX = 0;
+      offY = 0;
+      if (scene_enter_flag != 0) {
+        if (load_map_data((team_abstract_x + RPG_viewport_x) + scene_enter_flag * 16,
+                          (team_abstract_y + RPG_viewport_y) + scene_leave_flag * 8, 0)) {
+          offX = (int16_t)(scene_enter_flag * 16);
+          offY = (int16_t)(scene_leave_flag * 8);
+          moving = 1;
+        }
+      }
+      PAL_ExTF((uint16_t *)&RPG_team_direction, scene_enter_flag, scene_leave_flag);
+      x_off = RPG_viewport_x + team_abstract_x;
+      y_off = RPG_viewport_y + team_abstract_y;
+      viewport_x_bak = RPG_viewport_x;
+      viewport_y_bak = RPG_viewport_y;
+      if (moving) {
+        RPG_viewport_x = RPG_viewport_x + offX;
+        RPG_viewport_y = RPG_viewport_y + offY;
+        PAL_Ffxy(&RPG_viewport_x, &RPG_viewport_y, battle_viewport_x, battle_viewport_y);
+        if (RPG_viewport_x == viewport_x_bak)
+          RPG_viewport_y = viewport_y_bak;
+        if (RPG_viewport_y == viewport_y_bak)
+          RPG_viewport_x = viewport_x_bak;
+        update_party_position();
+      } else {
+        init_walk_frames();
+      }
+      party_abs_x = team_abstract_x + RPG_viewport_x;
+      party_abs_y = team_abstract_y + RPG_viewport_y;
+
+      get_party_role_id();
+      get_sprites_curr_scene();
+      render_scene_with_rng();
+      update_viewport_scroll();
+      render_scene_and_fade(1);
+      if (!moving) {
+        PAL_Flip();
+      }
+      PAL_Flip();
+
+      switch (action) {
+      case 1:
+        process_menu();
+        break;
+      case 2:
+        check_trigger_events();
+        break;
+      case 12:
+        select_magic();
+        draw_battle_row_sprite();
+        break;
+      case 13:
+        inventory_use_menu();
+        draw_battle_row_sprite();
+        break;
+      case 14:
+        if (yes_no_menu(0, 19) == 1)
+          release_resources_exit();
+        draw_battle_row_sprite();
+        break;
+      case 15:
+        entry_stub_show_text();
+        draw_battle_row_sprite();
+        break;
+      case 16:
+        use_item_menu();
+        draw_battle_row_sprite();
+        break;
+      default:
+        break;
+      }
+      mutex_shaking ^= 1;
+      PAL_Flip();
+      if (redraw_flag != 0)
+        goto L_scene;
     }
-    mutex_shaking ^= 1;
-    PAL_Flip();
-  } while (redraw_flag == 0);
-  if (exit_flag != 0) {
-    // NOTE: remake 增补回边观察点（golden 靠 VB End 直接终止进程）。
-    release_resources_exit();
-    return 0;
   }
-  goto L_scene;
+  return 0;
 }

@@ -15,9 +15,9 @@
 #include <string.h>
 #include <unistd.h>
 
-// NOTE: golden PAL_Unpak 无目的地容量上限（信任流数据，越界即 UB）；remake
-// 增设安全上限 PAL_UNPAK_DST_CAP（= 全部调用点最大目的地容量），超限截断。
-#define PAL_UNPAK_DST_CAP 128736
+// NOTE: golden 无 dst 上限；remake 增设 65536（=fire_mkf_data 容量，≥合法流
+// 最大解码 65502 不剪合法数据，详见 remake.md §4）。
+#define PAL_UNPAK_DST_CAP 65536
 
 static void pal_blit_rle(uint8_t *dstbase, const uint8_t *bitmap, int x, int y, int shadow);
 
@@ -257,8 +257,6 @@ static void pal_blit_rle_mode(uint8_t *dstbase, const uint8_t *bitmap, int x, in
   if (dstbase == NULL || bitmap == NULL)
     return;
   src = bitmap;
-  if (src[0] == 2 && src[1] == 0 && src[2] == 0 && src[3] == 0)
-    src += 4;
   w0 = src[0] | (src[1] << 8);
   h0 = src[2] | (src[3] << 8);
   src += 4;
@@ -290,17 +288,15 @@ static void pal_blit_rle_mode(uint8_t *dstbase, const uint8_t *bitmap, int x, in
       return;
     remain = (clipTop - y) * w0;
     rows = h0 - (clipTop - y);
-    while (remain > 0) {
+    // NOTE: 忠实 golden（putp 0x2ea9）：do-while，literal 越界仍消费、
+    // count==0 不提前退出（依赖每行 runs 合计==w0 的资源约定）。
+    do {
       int countByte = *rle++;
       int count = countByte & 0x7F;
-      if (count == 0)
-        break;
-      if (count > remain)
-        break;
       if ((countByte & 0x80) == 0)
         rle += count;
       remain -= count;
-    }
+    } while (remain > 0);
   }
 
   outW = w0;
@@ -335,22 +331,24 @@ static void pal_blit_rle_mode(uint8_t *dstbase, const uint8_t *bitmap, int x, in
     uint8_t *wp = rowbuf;
     memset(rowbuf, 0xFF, (size_t)((w0 + 3) & ~3));
     remain = w0;
-    while (remain > 0) {
+    // NOTE: 忠实 golden（putp 0x2f8e）：跨界 run 仍消费全部数据字节
+    // （流位置一致）；rowbuf 写入钳制为安全超集（golden 越界写不可观察）。
+    do {
       int countByte = *rp++;
       int count = countByte & 0x7F;
-      if (count == 0)
-        break;
-      if (count > remain)
-        break;
       if (countByte & 0x80) {
         wp += count;
       } else {
         int k;
-        for (k = 0; k < count; k++)
-          *wp++ = *rp++;
+        for (k = 0; k < count; k++) {
+          if (wp < rowbuf + sizeof(rowbuf))
+            *wp = *rp;
+          wp++;
+          rp++;
+        }
       }
       remain -= count;
-    }
+    } while (remain > 0);
     rle = rp;
     const uint8_t *sp = rowbuf + leftSkip;
     uint8_t *dp = dstbase + dstOfs;
@@ -918,6 +916,8 @@ int32_t PAL_GetFileSize(int32_t handle) {
 void PAL_NTree(int16_t strideFlag, void *listBase) {
   int32_t i, j;
   int32_t n = (int32_t)(pal_tree_count & 0xFF);
+  // NOTE: golden ntre 用 ExMyll 残留行界裁剪 putipna；已核查全部流程
+  // 该值 ≡ NipW 行数，故 remake 推迟到 NipW 行窗，行为等价。
   (void)strideFlag;
   (void)listBase;
   for (i = 0; i + 1 < n; i++) {
@@ -1106,6 +1106,8 @@ void PAL_NipWB(uint8_t effect, uint16_t rowCount, void *list) {
 }
 void PAL_NipWSeg(uint8_t *buf) { pal_render_page = buf; }
 void PAL_PutIpNA(int16_t x, int16_t topY, int16_t strideFlag, int16_t rowBound, const void *sprite, intptr_t listBase) {
+  // NOTE: golden 以第 4 参为纵窗裁剪（第 3 参选行链 stride）；remake
+  // 无行链，裁剪推迟到 NipW 行窗（见 PAL_NTree NOTE），两参仅存照。
   (void)strideFlag;
   (void)rowBound;
   (void)listBase;
@@ -1789,10 +1791,15 @@ void pal_rtcDoEvents(void) { pal_events_pump(); }
 static FILE *g_worddat;
 static int32_t g_worddat_handle;
 
+// NOTE: golden VB Open 缺失文件即 error 53 终止，此处同语义。
 void pal_vbOpenWordDat(void) {
   FILE *fp = pal_fopen("WORD.DAT", "rb");
+  if (fp == NULL) {
+    fprintf(stderr, "[remake] 无法打开资源文件 WORD.DAT（检查 $PAL98_DATA 或 CWD 数据目录）\n");
+    exit(1);
+  }
   g_worddat = fp;
-  g_worddat_handle = (fp != NULL) ? (int32_t)(intptr_t)fp : -1;
+  g_worddat_handle = (int32_t)(intptr_t)fp;
 }
 
 int32_t pal_vbReadWordDat(uint8_t *dst) {
